@@ -82,19 +82,13 @@ Make sure you have the following installed:
 
 ### **Steps to Start**
 
-1.  **Clone the Repository:**
-    ```bash
-    git clone https://github.com/ValentinTarantino/Youtube-Downloader.git
-    cd Youtube-Downloader
-    ```
-
-2.  **Install Backend (API) Dependencies:**
+1.  **Install Backend (API) Dependencies:**
     The `package.json` in the root directory contains the API dependencies.
     ```bash
     npm install
     ```
 
-3.  **Start the Backend Server (API):**
+2.  **Start the Backend Server (API):**
     Open a **new terminal window** in the project's root directory.
     ```bash
     cd backend
@@ -104,7 +98,7 @@ Make sure you have the following installed:
     ```
     *(You should see a message like `[LOCAL API] API Server running on port 3001` in the console. Keep this terminal window open.)*
 
-4.  **Install Frontend (React) Dependencies:**
+3.  **Install Frontend (React) Dependencies:**
     In the **first terminal window** (or a new one), navigate to the frontend directory.
     ```bash
     cd youtube-downloader-frontend
@@ -113,7 +107,7 @@ Make sure you have the following installed:
     npm install
     ```
 
-5.  **Start the Frontend Application:**
+4.  **Start the Frontend Application:**
     ```bash
     npm run dev
     ```
@@ -132,25 +126,19 @@ Para ejecutar este proyecto en tu máquina local y ver su funcionalidad completa
 Asegúrate de tener instalado:
 
 *   [Node.js](https://nodejs.org/es/download/) (versión 20.x o superior recomendada).
-    *   Puedes verificar tu versión con `node -v`.
+    *   Podes verificar tu versión con `node -v`.
 *   [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) (normalmente viene con Node.js).
 *   [Git](https://git-scm.com/downloads)
 
 ### **Pasos para Iniciar**
 
-1.  **Clona el Repositorio:**
-    ```bash
-    git clone https://github.com/ValentinTarantino/Youtube-Downloader.git
-    cd Youtube-Downloader
-    ```
-
-2.  **Instala las Dependencias del Backend (API):**
+1.  **Instala las Dependencias del Backend (API):**
     El `package.json` en la raíz contiene las dependencias de la API.
     ```bash
     npm install
     ```
 
-3.  **Inicia el Servidor Backend (API):**
+2.  **Inicia el Servidor Backend (API):**
     Abre una **nueva ventana de terminal** en la raíz del proyecto.
     ```bash
     cd backend
@@ -160,7 +148,7 @@ Asegúrate de tener instalado:
     ```
     *(Verás un mensaje como `[LOCAL API] API Server running on port 3001` en la consola. Mantén esta ventana de terminal abierta.)*
 
-4.  **Instala las Dependencias del Frontend (React):**
+3.  **Instala las Dependencias del Frontend (React):**
     En la **primera ventana de terminal** (o una nueva), navega al directorio del frontend.
     ```bash
     cd youtube-downloader-frontend
@@ -169,7 +157,7 @@ Asegúrate de tener instalado:
     npm install
     ```
 
-5.  **Inicia la Aplicación Frontend:**
+4.  **Inicia la Aplicación Frontend:**
     ```bash
     npm run dev
     ```
