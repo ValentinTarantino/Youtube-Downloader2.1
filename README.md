@@ -101,7 +101,7 @@ Make sure you have the following installed:
     ```
     ```bash
     npm start
-    
+    ```
     *(You should see a message like `[LOCAL API] API Server running on port 3001` in the console. Keep this terminal window open.)*
 
 4.  **Install Frontend (React) Dependencies:**
@@ -153,7 +153,10 @@ Asegúrate de tener instalado:
 3.  **Inicia el Servidor Backend (API):**
     Abre una **nueva ventana de terminal** en la raíz del proyecto.
     ```bash
-    npm install
+    cd backend
+    ```
+    ```bash
+    npm start
     ```
     *(Verás un mensaje como `[LOCAL API] API Server running on port 3001` en la consola. Mantén esta ventana de terminal abierta.)*
 
