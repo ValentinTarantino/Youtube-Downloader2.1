@@ -31,16 +31,14 @@ Este proyecto es una aplicación web full-stack que permite a los usuarios obten
 Here's a brief video demonstrating the application in full functionality within a local environment. This showcases the complete features as the cloud deployment faces external limitations.
 
 [**LINK_TO_YOUR_VIDEO_OR_GIF_DEMONSTRATION**](https://drive.google.com/file/d/1rcuH-qlrm5079Y3exV5YCG03RDwP95re/view?usp=drive_link)
-*(You can upload it to YouTube, Vimeo, or use an animated GIF on Imgur/Gfycat)*
 
 ---
 
 ## 🎥 Demostración en Video
 
-Aquí tienes un breve video que muestra la aplicación en pleno funcionamiento en un entorno local. Esto demuestra las características completas ya que el despliegue en la nube enfrenta limitaciones externas.
+Dejo un breve video que muestra la aplicación en pleno funcionamiento en un entorno local. Esto demuestra las características completas ya que el despliegue en la nube enfrenta limitaciones externas.
 
 [**ENLACE_A_TU_VIDEO_O_GIF_DE_DEMOSTRACION**](https://drive.google.com/file/d/1rcuH-qlrm5079Y3exV5YCG03RDwP95re/view?usp=drive_link)
-*(Puedes subirlo a YouTube, Vimeo, o usar un GIF animado en Imgur/Gfycat)*
 
 ##  Local Project Execution
 
