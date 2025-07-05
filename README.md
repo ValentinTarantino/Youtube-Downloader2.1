@@ -1,14 +1,14 @@
-# 📹 YouTube Downloader
+#  YouTube Downloader
 
 This project is a full-stack web application that allows users to fetch YouTube video information and download them in MP4 (with quality selection and combined audio/video) and MP3 formats.
 
 ---
 
-# 📹 Descargador de YouTube
+#  Descargador de YouTube
 
 Este proyecto es una aplicación web full-stack que permite a los usuarios obtener información de videos de YouTube y descargarlos en formatos MP4 (con selección de calidad y audio/video combinado) y MP3.
 
-## ✨ Main Features
+##  Main Features
 
 *   Video metadata retrieval (title, thumbnail).
 *   MP4 download quality selection (up to 1080p).
@@ -18,7 +18,7 @@ Este proyecto es una aplicación web full-stack que permite a los usuarios obten
 
 ---
 
-## ✨ Características Principales
+##  Características Principales
 
 *   Obtención de metadatos de videos (título, miniatura).
 *   Selección de calidad para descargas MP4 (hasta 1080p).
@@ -35,7 +35,7 @@ Here's a brief video demonstrating the application in full functionality within 
 
 ---
 
-##  Demostración en Video
+## 🎥 Demostración en Video
 
 Aquí tienes un breve video que muestra la aplicación en pleno funcionamiento en un entorno local. Esto demuestra las características completas ya que el despliegue en la nube enfrenta limitaciones externas.
 
@@ -140,42 +140,7 @@ Asegúrate de tener instalado:
     ```
     *(Esto abrirá la aplicación en tu navegador, generalmente en `http://localhost:5173/`. Mantén esta ventana de terminal abierta.)*
 
-Ahora puedes interactuar con la aplicación en tu navegador y observar los logs en la ventana de terminal donde iniciaste el backend.
-
-## 📂 Project Structure
-
-Youtube-Downloader/
-├── backend/ # Backend server code (API)
-│ └── server.js # Main API entry point
-├── youtube-downloader-frontend/ # React frontend application
-│ ├── public/
-│ ├── src/ # Frontend source code
-│ ├── package.json # Frontend dependencies
-│ └── ...
-├── node_modules/ # Backend dependencies (installed from root package.json)
-├── package.json # Backend dependencies & combined scripts
-├── package-lock.json
-├── .gitignore # Git ignore file
-└── README.md # This README file
-
-
----
-
-## 📂 Estructura del Proyecto
-
-Youtube-Downloader/
-├── backend/ # Código del servidor backend (API)
-│ └── server.js # Punto de entrada principal de la API
-├── youtube-downloader-frontend/ # Aplicación frontend de React
-│ ├── public/
-│ ├── src/ # Código fuente del frontend
-│ ├── package.json # Dependencias del frontend
-│ └── ...
-├── node_modules/ # Dependencias del backend (instaladas desde el package.json raíz)
-├── package.json # Dependencias del backend y scripts combinados
-├── package-lock.json
-├── .gitignore # Archivo .gitignore
-└── README.md # Este archivo README
+Ahora podes interactuar con la aplicación en tu navegador y observar los logs en la ventana de terminal donde iniciaste el backend.
 
 
 ##  Technologies Used
