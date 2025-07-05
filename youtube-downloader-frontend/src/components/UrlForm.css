@@ -1,0 +1,66 @@
+.url-form-container.input-group {
+    margin-bottom: 1.5rem;
+    box-shadow: var(--box-shadow);
+    border-radius: var(--border-radius) !important;
+}
+
+.url-input.form-control {
+    background: var(--glass-bg) !important;
+    border: 1px solid var(--glass-border) !important;
+    color: var(--text-primary) !important;
+    box-shadow: none !important;
+    padding: 1rem;
+    font-size: 1rem;
+    font-family: 'Poppins', sans-serif;
+    transition: all 0.3s ease;
+}
+
+.url-input::placeholder {
+    color: var(--text-secondary);
+}
+
+.url-input:focus {
+    border-color: var(--glow-secondary) !important;
+    box-shadow: 0 0 20px rgba(0, 255, 195, 0.3) !important;
+    z-index: 3;
+}
+
+.cta-button.btn {
+    background: linear-gradient(90deg, var(--glow-primary), var(--glow-secondary)) !important;
+    border: none !important;
+    color: #fff !important;
+    border-radius: 0 var(--border-radius) var(--border-radius) 0 !important;
+
+    padding: 1rem 1.8rem;
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: 'Poppins', sans-serif;
+    cursor: pointer;
+
+    position: relative;
+    z-index: 2;
+    transition: transform 0.2s ease-out, box-shadow 0.3s ease;
+    box-shadow: 0 0 10px rgba(255, 0, 193, 0.4), 0 0 10px rgba(0, 255, 195, 0.4);
+}
+
+.play-icon {
+    font-size: 1.8rem;
+    vertical-align: middle;
+
+}
+
+.spinner-icon {
+    font-size: 1.8rem;
+    vertical-align: middle;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}

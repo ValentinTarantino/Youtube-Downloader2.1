@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+
+:root {
+  --background-start: #1e133a;
+  --background-end: #0c0d24;
+  --glass-bg: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --text-primary: #f0f0f0;
+  --text-secondary: #a9a6b3;
+  --glow-primary: #ff00c1;
+  --glow-secondary: #00ffc3;
+  --border-radius: 12px;
+  --box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+body {
+  margin: 0;
+  font-family: 'Poppins', sans-serif !important; 
+  color: var(--text-primary);
+  
+  background-color: var(--background-end) !important;
+  background-image: 
+    radial-gradient(at 20% 20%, var(--background-start) 0px, transparent 50%),
+    radial-gradient(at 80% 80%, var(--glow-primary) 0px, transparent 50%);
+  background-attachment: fixed;
+  
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-container.container {
+  background-color: transparent;
+  text-align: center;
+}
+
+.app-header h1 {
+  font-size: 3rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, var(--glow-primary), var(--glow-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.5rem;
+}
+
+.app-header p {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  margin-bottom: 3rem;
+  font-weight: 300;
+}
+
+.error-message {
+  background-color: rgba(255, 0, 64, 0.2);
+  color: #ffb8c9;
+  border: 1px solid rgba(255, 0, 64, 0.5);
+  padding: 1rem;
+  border-radius: var(--border-radius);
+  font-weight: 400;
+  margin-top: 1rem;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+  .app-header h1 { font-size: 2.2rem; }
+  body {
+    align-items: flex-start;
+    padding-top: 5vh;
+  }
+}
