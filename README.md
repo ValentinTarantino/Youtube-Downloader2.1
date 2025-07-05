@@ -26,11 +26,38 @@ Este proyecto es una aplicación web full-stack que permite a los usuarios obten
 *   Interfaz de usuario responsiva construida con React (Vite).
 *   API robusta en Node.js (Express) para procesar las solicitudes de descarga.
 
+
+## 🚀 Live Deployment
+
+**Note:** This application is primarily designed for local execution.
+
+### **Why it's not fully hosted:**
+
+The core functionality of this project relies on interacting with YouTube's public API endpoints using `@distube/ytdl-core`. Due to YouTube's strict anti-scraping and bot detection policies, requests originating from cloud environments (like serverless functions on AWS Lambda, which platforms like Netlify use) are frequently identified and blocked.
+
+This results in errors such as `"Sign in to confirm you're not a bot"`, preventing reliable fetching of video information and subsequent downloads when deployed on cloud infrastructure without the use of expensive, rotating residential proxy services.
+
+Therefore, for a complete and fully functional demonstration of the project, please follow the local execution instructions below.
+
+---
+
+## 🚀 Despliegue en Vivo
+
+**Nota:** Esta aplicación está diseñada principalmente para ejecución local.
+
+### **Por qué no está completamente alojada:**
+
+La funcionalidad central de este proyecto se basa en la interacción con los puntos finales de la API pública de YouTube utilizando `@distube/ytdl-core`. Debido a las estrictas políticas anti-scraping y de detección de bots de YouTube, las solicitudes que se originan en entornos de nube (como las funciones serverless en AWS Lambda, utilizadas por plataformas como Netlify) son frecuentemente identificadas y bloqueadas.
+
+Esto da como resultado errores como `"Sign in to confirm you're not a bot"`, impidiendo la recuperación fiable de información de video y las descargas posteriores cuando se despliega en infraestructura en la nube sin el uso de servicios de proxy residenciales rotativos y costosos.
+
+Por lo tanto, para una demostración completa y funcional del proyecto, por favor, sigue las instrucciones de ejecución local a continuación.
+
 ## 🎥 Video Demonstration
 
 Here's a brief video demonstrating the application in full functionality within a local environment. This showcases the complete features as the cloud deployment faces external limitations.
 
-[**LINK_TO_YOUR_VIDEO_OR_GIF_DEMONSTRATION**](https://drive.google.com/file/d/1rcuH-qlrm5079Y3exV5YCG03RDwP95re/view?usp=drive_link)
+[**CLICK HERE**](https://drive.google.com/file/d/1rcuH-qlrm5079Y3exV5YCG03RDwP95re/view?usp=drive_link)
 
 ---
 
@@ -38,7 +65,7 @@ Here's a brief video demonstrating the application in full functionality within 
 
 Dejo un breve video que muestra la aplicación en pleno funcionamiento en un entorno local. Esto demuestra las características completas ya que el despliegue en la nube enfrenta limitaciones externas.
 
-[**ENLACE_A_TU_VIDEO_O_GIF_DE_DEMOSTRACION**](https://drive.google.com/file/d/1rcuH-qlrm5079Y3exV5YCG03RDwP95re/view?usp=drive_link)
+[**CLICKEA ACA**](https://drive.google.com/file/d/1rcuH-qlrm5079Y3exV5YCG03RDwP95re/view?usp=drive_link)
 
 ##  Local Project Execution
 
