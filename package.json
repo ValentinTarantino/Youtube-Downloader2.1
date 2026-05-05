@@ -10,8 +10,11 @@
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/content-disposition": "^0.5.9",
+    "canvas-confetti": "^1.9.4",
     "content-disposition": "^1.1.0",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "play-dl": "^1.9.7",

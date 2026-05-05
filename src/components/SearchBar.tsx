@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Loader2 } from "lucide-react";
+import { Search as SearchIcon, Loader2 as LoaderIcon } from "lucide-react";
 
 interface SearchBarProps {
   onSearch: (url: string) => void;
@@ -13,38 +13,36 @@ export default function SearchBar({ onSearch, isLoading }: SearchBarProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (url.trim()) {
-      onSearch(url.trim());
-    }
+    // Enviamos la URL aunque esté vacía para que la página principal maneje el "reset"
+    onSearch(url.trim());
   };
 
   return (
-    <form 
-      onSubmit={handleSubmit} 
-      className="relative w-full max-w-2xl mx-auto group"
-    >
-      <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-      <div className="relative flex items-center w-full h-16 rounded-2xl bg-black/60 backdrop-blur-xl border border-white/10 overflow-hidden shadow-2xl transition-all focus-within:border-white/30 focus-within:bg-black/80">
-        <div className="flex items-center justify-center pl-6 pr-4">
-          <Search className="w-6 h-6 text-gray-400" />
+    <form onSubmit={handleSubmit} className="relative group">
+      <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+      <div className="relative flex gap-2">
+        <div className="relative flex-1">
+          <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30 group-focus-within:text-purple-400 transition-colors" />
+          <input
+            type="text"
+            placeholder="Paste YouTube link here..."
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="w-full pl-12 pr-4 py-5 rounded-2xl glass-input text-white placeholder:text-white/20 text-lg"
+          />
         </div>
-        <input
-          type="url"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="Pega el enlace de YouTube aquí..."
-          className="w-full h-full bg-transparent text-white placeholder-gray-500 text-lg focus:outline-none"
-          required
-        />
         <button
           type="submit"
-          disabled={isLoading || !url.trim()}
-          className="h-full px-8 bg-white/10 hover:bg-white/20 text-white font-medium transition-colors border-l border-white/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[120px]"
+          disabled={isLoading}
+          className="premium-button px-8 rounded-2xl disabled:opacity-50 disabled:active:scale-100 flex items-center gap-2 whitespace-nowrap"
         >
           {isLoading ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
+            <LoaderIcon className="w-5 h-5 animate-spin" />
           ) : (
-            "Buscar"
+            <>
+              <span className="hidden md:inline">Search Video</span>
+              <SearchIcon className="w-5 h-5 md:hidden" />
+            </>
           )}
         </button>
       </div>
