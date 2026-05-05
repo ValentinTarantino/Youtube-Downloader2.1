@@ -5,37 +5,30 @@ export interface VideoMetadata {
   thumbnail: string;
   author: string;
   authorAvatar?: string;
+  platform: 'youtube' | 'tiktok' | 'instagram';
+  directUrls?: {
+    video: string;
+    audio: string;
+  };
 }
 
-function extractVideoId(url: string): string | null {
-  const match = url.match(/(?:youtu\.be\/|(?:www\.)?youtube\.com\/(?:embed\/|v\/|live\/|watch\?v=|watch\?.+&v=))([^&]{11})/);
-  return match ? match[1] : null;
-}
-
-const RAPID_HEADERS = {
+const RAPID_HEADERS = (host: string) => ({
   'x-rapidapi-key': process.env.RAPIDAPI_KEY || '',
-  'x-rapidapi-host': process.env.RAPIDAPI_HOST || ''
-};
+  'x-rapidapi-host': host
+});
 
-const METADATA_HOST = 'social-media-video-downloader.p.rapidapi.com';
-
-export async function getVideoMetadata(url: string): Promise<VideoMetadata> {
-  const videoId = extractVideoId(url);
-  if (!videoId) throw new Error("Invalid YouTube URL.");
+// YouTube Metadata Logic
+async function getYouTubeMetadata(url: string): Promise<VideoMetadata> {
+  const METADATA_HOST = 'social-media-video-downloader.p.rapidapi.com';
+  const videoId = url.match(/(?:youtu\.be\/|(?:www\.)?youtube\.com\/(?:embed\/|v\/|live\/|watch\?v=|watch\?.+&v=))([^&]{11})/)?.[1];
 
   try {
     const res = await fetch(
       `https://${METADATA_HOST}/youtube/v3/video/details?url=${encodeURIComponent(url)}&urlAccess=normal`,
-      {
-        headers: {
-          'x-rapidapi-key': process.env.RAPIDAPI_KEY || '',
-          'x-rapidapi-host': METADATA_HOST
-        }
-      }
+      { headers: RAPID_HEADERS(METADATA_HOST) }
     );
 
     if (!res.ok) throw new Error(`Metadata error: ${res.status}`);
-
     const data = await res.json();
     const content = data.contents?.[0];
 
@@ -46,35 +39,61 @@ export async function getVideoMetadata(url: string): Promise<VideoMetadata> {
       thumbnail: content.thumbnails?.[content.thumbnails.length - 1]?.url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
       author: content.author?.name || "Creator",
       authorAvatar: content.author?.thumbnails?.[0]?.url || "",
+      platform: 'youtube'
     };
   } catch (error) {
-    console.error("Metadata fetch failed:", error);
-    try {
-      const fallbackRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
-      const fallbackData = await fallbackRes.json();
-
-      return {
-        title: fallbackData.title || "YouTube Video",
-        thumbnail: fallbackData.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-        author: fallbackData.author_name || "YouTube Creator",
-        authorAvatar: "",
-      };
-    } catch (e) {
-      return {
-        title: "YouTube Video",
-        thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-        author: "YouTube Creator",
-        authorAvatar: "",
-      };
-    }
+    // Fallback simple
+    return {
+      title: "YouTube Video",
+      thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      author: "YouTube Creator",
+      platform: 'youtube'
+    };
   }
 }
 
+// TikTok Metadata Logic
+async function getTikTokMetadata(url: string): Promise<VideoMetadata> {
+  const TIKTOK_HOST = process.env.TIKTOK_API_HOST || 'tiktok-video-downloader-api1.p.rapidapi.com';
+  
+  try {
+    const res = await fetch(
+      `https://${TIKTOK_HOST}/media?videoUrl=${encodeURIComponent(url)}`,
+      { headers: RAPID_HEADERS(TIKTOK_HOST) }
+    );
+
+    if (!res.ok) throw new Error("TikTok API error");
+    const data = await res.json();
+    
+    // Basado en la respuesta típica de elisbushaj2/tiktok-video-downloader-api
+    return {
+      title: data.title || "TikTok Video",
+      thumbnail: data.cover || "",
+      author: data.author || "TikTok Creator",
+      platform: 'tiktok',
+      directUrls: {
+        video: data.play || "", // Sin marca de agua
+        audio: data.music || ""
+      }
+    };
+  } catch (error) {
+    throw new Error("Could not retrieve TikTok information.");
+  }
+}
+
+export async function getVideoMetadata(url: string): Promise<VideoMetadata> {
+  if (url.includes("tiktok.com")) {
+    return getTikTokMetadata(url);
+  }
+  return getYouTubeMetadata(url);
+}
+
+// Download logic for YouTube (Polling)
 export async function requestDownload(options: DownloadOptions): Promise<{ jobId: string }> {
   const format = options.isAudioOnly ? "mp3" : (options.quality || "720");
   const res = await fetch(
     `https://${process.env.RAPIDAPI_HOST}/ajax/download.php?format=${format}&url=${encodeURIComponent(options.url)}&audio_quality=128&add_info=0&no_merge=false`,
-    { headers: RAPID_HEADERS }
+    { headers: RAPID_HEADERS(process.env.RAPIDAPI_HOST || '') }
   );
 
   if (!res.ok) throw new Error("Download engine error.");
@@ -98,10 +117,4 @@ export interface DownloadOptions {
   url: string;
   isAudioOnly?: boolean;
   quality?: "360" | "480" | "720" | "1080" | "max";
-  title?: string;
-}
-
-export async function getDownloadUrl(options: DownloadOptions): Promise<string> {
-  const { jobId } = await requestDownload(options);
-  return jobId;
 }

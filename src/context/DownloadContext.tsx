@@ -40,6 +40,15 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
   }, []);
 
+  const downloadFile = (url: string) => {
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const addDownloadTask = async (
     url: string,
     metadata: VideoMetadata,
@@ -61,6 +70,18 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
     setTasks((prev) => [newTask, ...prev]);
 
     try {
+      // HANDLE DIRECT DOWNLOADS (TikTok, Instagram)
+      if (metadata.directUrls) {
+        const directUrl = type === "audio" ? metadata.directUrls.audio : metadata.directUrls.video;
+        if (directUrl) {
+          updateTask(id, { progress: 100, status: "Ready", downloadUrl: directUrl });
+          triggerConfetti();
+          downloadFile(directUrl);
+          return;
+        }
+      }
+
+      // HANDLE YOUTUBE DOWNLOADS (Polling)
       const { jobId } = await requestDownload({
         url,
         isAudioOnly: type === "audio",
@@ -70,8 +91,8 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
       updateTask(id, { jobId, status: "Processing..." });
 
       let finalLink = "";
-
       const initialStatus = await checkDownloadProgress(jobId);
+      
       if (initialStatus.downloadUrl) {
         finalLink = initialStatus.downloadUrl;
       } else {
@@ -92,21 +113,14 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
             break;
           }
 
-          if (status.status === "ERROR") {
-            throw new Error("Server error");
-          }
+          if (status.status === "ERROR") throw new Error("Server error");
         }
       }
 
       if (finalLink) {
         updateTask(id, { progress: 100, status: "Ready", downloadUrl: finalLink });
         triggerConfetti();
-
-        const link = document.createElement("a");
-        link.href = finalLink;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        downloadFile(finalLink);
       } else {
         throw new Error("Timeout");
       }
