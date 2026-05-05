@@ -27,21 +27,22 @@ export default function DownloadOptions({ url, metadata }: DownloadOptionsProps)
   };
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <section className="space-y-4" aria-label="Available download options">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Video Download Card */}
-        <div className="glass-card rounded-3xl p-2 flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-4 p-4">
-            <div className="w-12 h-12 rounded-2xl bg-blue-500/20 flex items-center justify-center text-blue-400">
-              <Video className="w-6 h-6" />
+        <div className="glass-card rounded-3xl p-2 flex items-center justify-between gap-2 hover:border-purple-500/30 transition-all">
+          <div className="flex items-center gap-3 md:gap-4 p-3 md:p-4 min-w-0">
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+              <Video className="w-5 h-5 md:w-6 md:h-6" />
             </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-white">Video MP4</span>
+            <div className="flex flex-col min-w-0">
+              <span className="font-bold text-white text-sm md:text-base">Video MP4</span>
               <div className="relative inline-block group">
                 <select
                   value={videoQuality}
                   onChange={(e) => setVideoQuality(e.target.value as DLOptions["quality"])}
-                  className="bg-transparent text-white/40 text-sm font-medium outline-none cursor-pointer hover:text-white transition-colors appearance-none pr-6"
+                  aria-label="Select video quality"
+                  className="bg-transparent text-white/40 text-xs md:text-sm font-medium outline-none cursor-pointer hover:text-white transition-colors appearance-none pr-5"
                 >
                   <option value="1080" className="bg-[#111]">1080p (Full HD)</option>
                   <option value="720" className="bg-[#111]">720p (HD)</option>
@@ -54,46 +55,48 @@ export default function DownloadOptions({ url, metadata }: DownloadOptionsProps)
           <button
             onClick={() => handleDownload("video")}
             disabled={isRequesting}
-            className="premium-button h-[80px] w-[100px] rounded-2xl flex flex-col items-center justify-center gap-1 shrink-0"
+            aria-label={`Download video in ${videoQuality}p`}
+            className="premium-button h-[70px] md:h-[80px] w-[80px] md:w-[100px] rounded-2xl flex flex-col items-center justify-center gap-1 shrink-0"
           >
             {isRequesting ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <>
-                <Download className="w-5 h-5" />
-                <span className="text-[10px] font-bold uppercase tracking-wider">Download</span>
+                <Download className="w-4 h-4 md:w-5 md:h-5" />
+                <span className="text-[8px] md:text-[10px] font-bold uppercase tracking-wider">Download</span>
               </>
             )}
           </button>
         </div>
 
         {/* Audio Download Card */}
-        <div className="glass-card rounded-3xl p-2 flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-4 p-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-emerald-400">
-              <Music className="w-6 h-6" />
+        <div className="glass-card rounded-3xl p-2 flex items-center justify-between gap-2 hover:border-emerald-500/30 transition-all">
+          <div className="flex items-center gap-3 md:gap-4 p-3 md:p-4 min-w-0">
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+              <Music className="w-5 h-5 md:w-6 md:h-6" />
             </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-white">Audio MP3</span>
-              <span className="text-white/40 text-sm font-medium">High Quality (320kbps)</span>
+            <div className="flex flex-col min-w-0">
+              <span className="font-bold text-white text-sm md:text-base">Audio MP3</span>
+              <span className="text-white/40 text-xs md:text-sm font-medium">High Quality (320kbps)</span>
             </div>
           </div>
           <button
             onClick={() => handleDownload("audio")}
             disabled={isRequesting}
-            className="h-[80px] w-[100px] rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shrink-0"
+            aria-label="Download audio mp3"
+            className="h-[70px] md:h-[80px] w-[80px] md:w-[100px] rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shrink-0"
           >
             {isRequesting ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <>
-                <Download className="w-5 h-5" />
-                <span className="text-[10px] font-bold uppercase tracking-wider">Audio</span>
+                <Download className="w-4 h-4 md:w-5 md:h-5" />
+                <span className="text-[8px] md:text-[10px] font-bold uppercase tracking-wider">Audio</span>
               </>
             )}
           </button>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
