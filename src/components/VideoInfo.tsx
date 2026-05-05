@@ -14,10 +14,8 @@ export default function VideoInfo({ metadata }: VideoInfoProps) {
 
   return (
     <article className="glass-card rounded-3xl p-4 md:p-6 flex flex-col md:flex-row gap-6 md:gap-8 items-center overflow-hidden relative group">
-      {/* Subtle accent light */}
       <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 blur-3xl -mr-16 -mt-16 group-hover:bg-purple-500/20 transition-colors" aria-hidden="true" />
       
-      {/* Thumbnail Container */}
       <div className="relative w-full md:w-64 aspect-video md:h-40 flex-shrink-0">
         <img
           src={metadata.thumbnail}
@@ -29,14 +27,12 @@ export default function VideoInfo({ metadata }: VideoInfoProps) {
         </div>
       </div>
       
-      {/* Content Container */}
       <div className="flex-1 text-center md:text-left min-w-0">
         <h2 className="text-lg md:text-2xl lg:text-3xl font-bold mb-4 leading-tight text-white group-hover:text-purple-300 transition-colors line-clamp-2">
           {metadata.title}
         </h2>
         
         <div className="flex items-center justify-center md:justify-start gap-3">
-          {/* Author Avatar */}
           <div className="relative w-10 h-10 md:w-12 md:h-12 flex-shrink-0">
             <img 
               src={avatarUrl} 

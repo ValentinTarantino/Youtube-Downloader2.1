@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const quality = req.nextUrl.searchParams.get("quality");
 
   if (!url || !ytdl.validateURL(url)) {
-    return NextResponse.json({ error: "URL inválida" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
   }
 
   try {
@@ -27,18 +27,16 @@ export async function GET(req: NextRequest) {
       try {
         format = ytdl.chooseFormat(info.formats, { filter: "audioonly", quality: "highestaudio" });
       } catch (e) {
-        // Fallback: buscar cualquier formato que tenga audio
         format = info.formats.find(f => f.hasAudio);
       }
     } else {
-      // Find the best mp4 format with video and audio
-      format = info.formats.find(f => 
-        f.container === "mp4" && 
-        f.hasAudio && 
-        f.hasVideo && 
+      format = info.formats.find(f =>
+        f.container === "mp4" &&
+        f.hasAudio &&
+        f.hasVideo &&
         (quality === "max" ? true : f.qualityLabel?.includes(quality || "1080"))
       );
-      
+
       if (!format) {
         format = ytdl.chooseFormat(info.formats, { filter: "audioandvideo", quality: "highest" });
       }
@@ -52,7 +50,6 @@ export async function GET(req: NextRequest) {
 
     const stream = ytdl.downloadFromInfo(info, { format });
 
-    // Next.js NextResponse accepts a ReadableStream, we convert the Node stream
     const readableStream = new ReadableStream({
       start(controller) {
         stream.on('data', chunk => controller.enqueue(chunk));
@@ -78,7 +75,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("[API ERROR]", error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: (error as Error).message,
       stack: process.env.NODE_ENV === 'development' ? (error as Error).stack : undefined
     }, { status: 500 });

@@ -37,7 +37,6 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
       layout
       className="pointer-events-auto glass-card rounded-2xl p-2 md:p-3 shadow-2xl border border-white/10 flex gap-3 overflow-hidden relative group"
     >
-      {/* Background Progress Fill */}
       {isProcessing && (
         <motion.div 
           className="absolute inset-0 bg-purple-500/10 origin-left pointer-events-none"
@@ -48,7 +47,6 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
         />
       )}
 
-      {/* Thumbnail */}
       <div className="relative w-12 h-12 md:w-16 md:h-16 rounded-xl overflow-hidden flex-shrink-0 border border-white/5">
         <img src={task.thumbnail} alt="" className="w-full h-full object-cover" aria-hidden="true" />
         <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
@@ -60,7 +58,6 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
         </div>
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0 flex flex-col justify-center">
         <h4 className="text-white text-[10px] md:text-xs font-bold truncate pr-6">
           {task.title}
@@ -89,7 +86,6 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
         )}
       </div>
 
-      {/* Remove Button */}
       <button 
         onClick={onRemove}
         aria-label="Remove download notification"

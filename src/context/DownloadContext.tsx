@@ -47,7 +47,7 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
     quality: DownloadOptions["quality"]
   ) => {
     const id = Math.random().toString(36).substr(2, 9);
-    
+
     const newTask: DownloadTask = {
       id,
       jobId: "",
@@ -69,10 +69,8 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
 
       updateTask(id, { jobId, status: "Processing..." });
 
-      // Iniciar el polling
       let finalLink = "";
-      
-      // Chequeo inicial
+
       const initialStatus = await checkDownloadProgress(jobId);
       if (initialStatus.downloadUrl) {
         finalLink = initialStatus.downloadUrl;
@@ -80,13 +78,13 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
         for (let i = 0; i < 60; i++) {
           await new Promise((r) => setTimeout(r, 1000));
           const status = await checkDownloadProgress(jobId);
-          
+
           const currentProgress = status.progress || 0;
           const prog = currentProgress > 100 ? Math.floor(currentProgress / 10) : currentProgress;
-          
-          updateTask(id, { 
-            progress: prog, 
-            status: status.status || "Converting..." 
+
+          updateTask(id, {
+            progress: prog,
+            status: status.status || "Converting..."
           });
 
           if (status.downloadUrl) {
@@ -103,8 +101,7 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
       if (finalLink) {
         updateTask(id, { progress: 100, status: "Ready", downloadUrl: finalLink });
         triggerConfetti();
-        
-        // Auto-descarga (Ghost Link)
+
         const link = document.createElement("a");
         link.href = finalLink;
         document.body.appendChild(link);

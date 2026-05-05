@@ -17,7 +17,6 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [recentVideos, setRecentVideos] = useState<VideoMetadata[]>([]);
 
-  // Load history on mount
   useEffect(() => {
     const saved = localStorage.getItem("ytpro_history");
     if (saved) {
@@ -45,7 +44,7 @@ export default function Home() {
     try {
       const data = await getVideoMetadata(url);
       setMetadata(data);
-      
+
       setRecentVideos(prev => {
         const filtered = prev.filter(v => v.title !== data.title);
         const updated = [data, ...filtered].slice(0, 4);
@@ -68,10 +67,9 @@ export default function Home() {
   return (
     <main className="min-h-screen relative flex flex-col items-center py-8 px-4 md:py-12 md:px-24 overflow-x-hidden">
       <Background />
-      
-      {/* Header Section */}
+
       <header className="text-center mb-8 md:mb-12 z-10 w-full max-w-3xl">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
@@ -85,19 +83,18 @@ export default function Home() {
         </motion.div>
       </header>
 
-      {/* Main Search Section */}
       <section className="w-full max-w-3xl z-10 space-y-6 md:space-y-8" aria-label="YouTube Downloader Search">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2, duration: 0.5 }}
         >
           <SearchBar onSearch={handleSearch} isLoading={isLoading} />
         </motion.div>
-        
+
         <AnimatePresence mode="wait">
           {error && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
@@ -142,9 +139,8 @@ export default function Home() {
           )}
         </AnimatePresence>
 
-        {/* Recent Searches Section */}
         {recentVideos.length > 0 && !metadata && !isLoading && (
-          <aside 
+          <aside
             className="pt-8"
             aria-label="Recent Searches"
           >
@@ -153,7 +149,7 @@ export default function Home() {
                 <History className="w-4 h-4" />
                 Recent Searches
               </div>
-              <button 
+              <button
                 onClick={clearHistory}
                 className="text-white/20 hover:text-red-400 transition-colors text-[10px] md:text-xs flex items-center gap-1"
                 aria-label="Clear history"
@@ -161,7 +157,7 @@ export default function Home() {
                 <X className="w-3 h-3" /> Clear
               </button>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
               {recentVideos.map((video, idx) => (
                 <motion.button
@@ -174,10 +170,10 @@ export default function Home() {
                   onClick={() => handleSearch(`https://www.youtube.com/watch?v=${video.thumbnail.split('/vi/')[1]?.split('/')[0]}`)}
                   className="glass-card p-3 rounded-2xl flex items-center gap-4 text-left group"
                 >
-                  <img 
-                    src={video.thumbnail} 
-                    alt="" 
-                    className="w-16 md:w-20 h-10 md:h-12 object-cover rounded-lg opacity-60 group-hover:opacity-100 transition-opacity" 
+                  <img
+                    src={video.thumbnail}
+                    alt=""
+                    className="w-16 md:w-20 h-10 md:h-12 object-cover rounded-lg opacity-60 group-hover:opacity-100 transition-opacity"
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-white/80 font-medium text-xs md:text-sm truncate">{video.title}</p>
@@ -191,7 +187,6 @@ export default function Home() {
         )}
       </section>
 
-      {/* Footer */}
       <footer className="mt-auto pt-16 pb-8 text-white/20 text-[10px] md:text-xs font-medium tracking-widest uppercase z-10 text-center">
         YT PRO • Premium Experience • Next.js & Youtube Master API
       </footer>

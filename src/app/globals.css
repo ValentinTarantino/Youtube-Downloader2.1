@@ -17,7 +17,7 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   }
-  
+
   .glass-input {
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(10px);
@@ -78,29 +78,33 @@
 }
 
 @keyframes move {
-  from { transform: translate(-10%, -10%); }
-  to { transform: translate(110%, 110%); }
+  from {
+    transform: translate(-10%, -10%);
+  }
+
+  to {
+    transform: translate(110%, 110%);
+  }
 }
 
 @keyframes shimmer {
-  100% { transform: translateX(100%); }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
-
-/* Global Smooth Scroll */
 html {
   scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: #9333ea transparent;
 }
 
-/* Futuristic Ghost Scrollbar */
 ::-webkit-scrollbar {
-  width: 4px; /* Ultra thin */
+  width: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent; /* Totally invisible */
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -114,10 +118,6 @@ html {
   width: 6px;
 }
 
-/* Hide scrollbar arrows */
 ::-webkit-scrollbar-button {
   display: none;
 }
-
-
-

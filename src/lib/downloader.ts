@@ -8,7 +8,6 @@ export interface VideoMetadata {
 }
 
 function extractVideoId(url: string): string | null {
-  // Regex actualizada para soportar: watch?v=, youtu.be/, /live/, /embed/ y www.
   const match = url.match(/(?:youtu\.be\/|(?:www\.)?youtube\.com\/(?:embed\/|v\/|live\/|watch\?v=|watch\?.+&v=))([^&]{11})/);
   return match ? match[1] : null;
 }
@@ -27,19 +26,19 @@ export async function getVideoMetadata(url: string): Promise<VideoMetadata> {
   try {
     const res = await fetch(
       `https://${METADATA_HOST}/youtube/v3/video/details?url=${encodeURIComponent(url)}&urlAccess=normal`,
-      { 
+      {
         headers: {
           'x-rapidapi-key': process.env.RAPIDAPI_KEY || '',
           'x-rapidapi-host': METADATA_HOST
-        } 
+        }
       }
     );
-    
+
     if (!res.ok) throw new Error(`Metadata error: ${res.status}`);
-    
+
     const data = await res.json();
     const content = data.contents?.[0];
-    
+
     if (!content) throw new Error("No metadata found");
 
     return {
@@ -50,11 +49,10 @@ export async function getVideoMetadata(url: string): Promise<VideoMetadata> {
     };
   } catch (error) {
     console.error("Metadata fetch failed:", error);
-    // Fallback a noembed
     try {
       const fallbackRes = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
       const fallbackData = await fallbackRes.json();
-      
+
       return {
         title: fallbackData.title || "YouTube Video",
         thumbnail: fallbackData.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
@@ -105,5 +103,5 @@ export interface DownloadOptions {
 
 export async function getDownloadUrl(options: DownloadOptions): Promise<string> {
   const { jobId } = await requestDownload(options);
-  return jobId; 
+  return jobId;
 }

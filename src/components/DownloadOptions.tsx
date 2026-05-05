@@ -29,7 +29,6 @@ export default function DownloadOptions({ url, metadata }: DownloadOptionsProps)
   return (
     <section className="space-y-4" aria-label="Available download options">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Video Download Card */}
         <div className="glass-card rounded-3xl p-2 flex items-center justify-between gap-2 hover:border-purple-500/30 transition-all">
           <div className="flex items-center gap-3 md:gap-4 p-3 md:p-4 min-w-0">
             <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
@@ -69,7 +68,6 @@ export default function DownloadOptions({ url, metadata }: DownloadOptionsProps)
           </button>
         </div>
 
-        {/* Audio Download Card */}
         <div className="glass-card rounded-3xl p-2 flex items-center justify-between gap-2 hover:border-emerald-500/30 transition-all">
           <div className="flex items-center gap-3 md:gap-4 p-3 md:p-4 min-w-0">
             <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">

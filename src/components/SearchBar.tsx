@@ -18,7 +18,6 @@ export default function SearchBar({ onSearch, isLoading }: SearchBarProps) {
 
   return (
     <form onSubmit={handleSubmit} className="relative group" role="search">
-      {/* Background Glow */}
       <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl blur opacity-25 group-hover:opacity-40 transition duration-1000 group-focus-within:opacity-60" aria-hidden="true" />
       
       <div className="relative flex gap-2">
