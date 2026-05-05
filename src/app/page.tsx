@@ -10,15 +10,19 @@ import Background from "@/components/Background";
 import VideoSkeleton from "@/components/VideoSkeleton";
 import { getVideoMetadata, VideoMetadata } from "@/lib/downloader";
 
+interface HistoryItem extends VideoMetadata {
+  originalUrl?: string;
+}
+
 export default function Home() {
   const [videoUrl, setVideoUrl] = useState("");
   const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [recentVideos, setRecentVideos] = useState<VideoMetadata[]>([]);
+  const [recentVideos, setRecentVideos] = useState<HistoryItem[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("ytpro_history");
+    const saved = localStorage.getItem("clipdrop_history");
     if (saved) {
       try {
         setRecentVideos(JSON.parse(saved));
@@ -29,7 +33,7 @@ export default function Home() {
   }, []);
 
   const handleSearch = async (url: string) => {
-    if (!url.trim()) {
+    if (!url || !url.trim()) {
       setMetadata(null);
       setVideoUrl("");
       setError(null);
@@ -45,23 +49,39 @@ export default function Home() {
       const data = await getVideoMetadata(url);
       setMetadata(data);
 
+      const historyItem: HistoryItem = { ...data, originalUrl: url };
+
       setRecentVideos(prev => {
         const filtered = prev.filter(v => v.title !== data.title);
-        const updated = [data, ...filtered].slice(0, 4);
-        localStorage.setItem("ytpro_history", JSON.stringify(updated));
+        const updated = [historyItem, ...filtered].slice(0, 4);
+        localStorage.setItem("clipdrop_history", JSON.stringify(updated));
         return updated;
       });
 
     } catch (err) {
-      setError("Could not retrieve video information. Please check the URL.");
+      setError((err as Error).message || "Could not fetch information. Please check the link.");
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleHistoryClick = (item: HistoryItem) => {
+    if (item.originalUrl) {
+      handleSearch(item.originalUrl);
+    }
+    else if (item.platform === 'youtube') {
+      const videoId = item.thumbnail.split('/vi/')[1]?.split('/')[0];
+      if (videoId) {
+        handleSearch(`https://www.youtube.com/watch?v=${videoId}`);
+      } else {
+        setError("This history item is outdated. Please search for it again.");
+      }
+    }
+  };
+
   const clearHistory = () => {
     setRecentVideos([]);
-    localStorage.removeItem("ytpro_history");
+    localStorage.removeItem("clipdrop_history");
   };
 
   return (
@@ -75,21 +95,21 @@ export default function Home() {
           transition={{ duration: 0.8 }}
         >
           <h1 className="text-5xl md:text-8xl font-extrabold mb-4 tracking-tighter glow-text">
-            YT <span className="text-purple-500">PRO</span>
+            Clip<span className="text-purple-500">Drop</span>
           </h1>
           <p className="text-white/50 text-base md:text-xl max-w-2xl mx-auto font-light px-4">
-            Download YouTube content in <span className="text-white font-medium">professional quality</span> with a single click.
+            Download <span className="text-white font-medium">Social Media</span> content in professional quality with a single click.
           </p>
         </motion.div>
       </header>
 
-      <section className="w-full max-w-3xl z-10 space-y-6 md:space-y-8" aria-label="YouTube Downloader Search">
+      <section className="w-full max-w-3xl z-10 space-y-6 md:space-y-8" aria-label="Media Downloader Search">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2, duration: 0.5 }}
         >
-          <SearchBar onSearch={handleSearch} isLoading={isLoading} />
+          <SearchBar onSearch={handleSearch} isLoading={isLoading} externalUrl={videoUrl} />
         </motion.div>
 
         <AnimatePresence mode="wait">
@@ -167,7 +187,7 @@ export default function Home() {
                   transition={{ delay: idx * 0.1 }}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => handleSearch(`https://www.youtube.com/watch?v=${video.thumbnail.split('/vi/')[1]?.split('/')[0]}`)}
+                  onClick={() => handleHistoryClick(video)}
                   className="glass-card p-3 rounded-2xl flex items-center gap-4 text-left group"
                 >
                   <img
@@ -176,6 +196,11 @@ export default function Home() {
                     className="w-16 md:w-20 h-10 md:h-12 object-cover rounded-lg opacity-60 group-hover:opacity-100 transition-opacity"
                   />
                   <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <span className="text-[7px] uppercase font-bold text-white/30 tracking-widest px-1 py-0.5 rounded bg-white/5 border border-white/5">
+                        {video.platform || 'youtube'}
+                      </span>
+                    </div>
                     <p className="text-white/80 font-medium text-xs md:text-sm truncate">{video.title}</p>
                     <p className="text-white/30 text-[10px] md:text-xs truncate">{video.author}</p>
                   </div>
@@ -188,7 +213,7 @@ export default function Home() {
       </section>
 
       <footer className="mt-auto pt-16 pb-8 text-white/20 text-[10px] md:text-xs font-medium tracking-widest uppercase z-10 text-center">
-        YT PRO • Premium Experience • Next.js & Youtube Master API
+        ClipDrop • Universal Media Suite • Next.js & Master Engine
       </footer>
     </main>
   );

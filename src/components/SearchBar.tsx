@@ -1,19 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search as SearchIcon, Loader2 as LoaderIcon } from "lucide-react";
 
 interface SearchBarProps {
   onSearch: (url: string) => void;
   isLoading: boolean;
+  externalUrl?: string; // Nuevo prop para sincronizar con el historial
 }
 
-export default function SearchBar({ onSearch, isLoading }: SearchBarProps) {
-  const [url, setUrl] = useState("");
+export default function SearchBar({ onSearch, isLoading, externalUrl = "" }: SearchBarProps) {
+  const [url, setUrl] = useState(externalUrl);
+
+  // Sincronizar el input cuando se hace clic en el historial
+  useEffect(() => {
+    if (externalUrl) {
+      setUrl(externalUrl);
+    }
+  }, [externalUrl]);
+
+  // Regresar atrás automáticamente si el usuario borra todo
+  useEffect(() => {
+    if (url === "" && !isLoading) {
+      onSearch("");
+    }
+  }, [url, onSearch, isLoading]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSearch(url.trim());
+    if (url.trim()) {
+      onSearch(url.trim());
+    }
   };
 
   return (
@@ -27,20 +44,18 @@ export default function SearchBar({ onSearch, isLoading }: SearchBarProps) {
             aria-hidden="true" 
           />
           <input
-            type="url"
-            placeholder="Paste YouTube link here..."
+            type="text"
+            placeholder="Paste your link here (YouTube, TikTok, Instagram...)"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            aria-label="YouTube Video URL"
-            required
+            aria-label="Video URL"
             className="w-full pl-10 md:pl-12 pr-4 py-4 md:py-5 rounded-2xl glass-input text-white placeholder:text-white/20 text-base md:text-lg outline-none focus:ring-2 focus:ring-purple-500/30 transition-all"
           />
         </div>
         <button
           type="submit"
-          disabled={isLoading}
-          aria-label={isLoading ? "Searching..." : "Search video"}
-          className="premium-button px-6 md:px-8 rounded-2xl disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 whitespace-nowrap min-w-[60px] md:min-w-[140px] transition-all"
+          disabled={isLoading || !url.trim()}
+          className="premium-button px-6 md:px-8 rounded-2xl disabled:opacity-50 flex items-center justify-center gap-2 min-w-[60px] md:min-w-[140px] transition-all"
         >
           {isLoading ? (
             <LoaderIcon className="w-5 h-5 animate-spin" />

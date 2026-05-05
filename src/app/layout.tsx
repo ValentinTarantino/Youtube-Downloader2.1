@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "YT PRO | Professional YouTube Downloader",
-  description: "Download YouTube videos and audio in high quality with a premium experience.",
+  title: "ClipDrop | Professional Media Downloader",
+  description: "Download YouTube, TikTok, and Instagram content in high quality with a premium experience.",
 };
 
 import { DownloadProvider } from "../context/DownloadContext";

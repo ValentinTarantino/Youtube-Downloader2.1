@@ -28,26 +28,16 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
 
   const triggerConfetti = () => {
-    confetti({
-      particleCount: 150,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ["#8B5CF6", "#3B82F6", "#10B981"],
-    });
+    confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ["#8B5CF6", "#3B82F6", "#10B981"] });
+  };
+
+  const triggerDownload = (url: string) => {
+    window.location.assign(url);
   };
 
   const updateTask = useCallback((id: string, updates: Partial<DownloadTask>) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
   }, []);
-
-  const downloadFile = (url: string) => {
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const addDownloadTask = async (
     url: string,
@@ -56,74 +46,68 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
     quality: DownloadOptions["quality"]
   ) => {
     const id = Math.random().toString(36).substr(2, 9);
-
-    const newTask: DownloadTask = {
-      id,
-      jobId: "",
-      title: metadata.title,
-      thumbnail: metadata.thumbnail,
-      progress: 0,
-      status: "Starting...",
-      type,
-    };
-
-    setTasks((prev) => [newTask, ...prev]);
+    setTasks((prev) => [{ id, jobId: "", title: metadata.title, thumbnail: metadata.thumbnail, progress: 0, status: "Starting...", type }, ...prev]);
 
     try {
-      // HANDLE DIRECT DOWNLOADS (TikTok, Instagram)
-      if (metadata.directUrls) {
-        const directUrl = type === "audio" ? metadata.directUrls.audio : metadata.directUrls.video;
+      if (metadata.platform === 'tiktok' || metadata.platform === 'instagram') {
+        let directUrl = "";
+
+        if (metadata.directUrls) {
+          if (type === "video" && metadata.directUrls.video) {
+            directUrl = metadata.directUrls.video;
+          } else if (type === "audio" && metadata.directUrls.audio) {
+            directUrl = metadata.directUrls.audio;
+          } else if (type === "audio" && metadata.directUrls.video) {
+            directUrl = metadata.directUrls.video;
+          }
+        }
+
         if (directUrl) {
-          updateTask(id, { progress: 100, status: "Ready", downloadUrl: directUrl });
+          const tunnelUrl = `/api/download?url=${encodeURIComponent(directUrl)}&type=${type}&filename=${encodeURIComponent(metadata.title)}`;
+          updateTask(id, { progress: 100, status: "Ready", downloadUrl: tunnelUrl });
           triggerConfetti();
-          downloadFile(directUrl);
+          triggerDownload(tunnelUrl);
           return;
         }
+
+        throw new Error("No download link available for this post.");
       }
 
-      // HANDLE YOUTUBE DOWNLOADS (Polling)
       const { jobId } = await requestDownload({
         url,
         isAudioOnly: type === "audio",
-        quality: type === "video" ? quality : "1080",
+        quality: type === "video" ? quality : "720",
       });
 
       updateTask(id, { jobId, status: "Processing..." });
 
       let finalLink = "";
-      const initialStatus = await checkDownloadProgress(jobId);
-      
-      if (initialStatus.downloadUrl) {
-        finalLink = initialStatus.downloadUrl;
+
+      const initial = await checkDownloadProgress(jobId);
+      if (initial.downloadUrl) {
+        finalLink = initial.downloadUrl;
       } else {
         for (let i = 0; i < 60; i++) {
           await new Promise((r) => setTimeout(r, 1000));
           const status = await checkDownloadProgress(jobId);
-
-          const currentProgress = status.progress || 0;
-          const prog = currentProgress > 100 ? Math.floor(currentProgress / 10) : currentProgress;
-
-          updateTask(id, {
-            progress: prog,
-            status: status.status || "Converting..."
-          });
+          const prog = status.progress > 100 ? Math.floor(status.progress / 10) : (status.progress || 0);
+          updateTask(id, { progress: Math.min(prog, 99), status: status.status || "Converting..." });
 
           if (status.downloadUrl) {
             finalLink = status.downloadUrl;
             break;
           }
-
-          if (status.status === "ERROR") throw new Error("Server error");
+          if (status.status === "ERROR") throw new Error("Conversion failed. Try again.");
         }
       }
 
-      if (finalLink) {
-        updateTask(id, { progress: 100, status: "Ready", downloadUrl: finalLink });
-        triggerConfetti();
-        downloadFile(finalLink);
-      } else {
-        throw new Error("Timeout");
-      }
+      if (!finalLink) throw new Error("Conversion timed out. Please try again.");
+
+      const tunnelUrl = `/api/download?url=${encodeURIComponent(finalLink)}&type=${type}&filename=${encodeURIComponent(metadata.title)}`;
+      updateTask(id, { progress: 100, status: "Ready", downloadUrl: tunnelUrl });
+      triggerConfetti();
+      triggerDownload(tunnelUrl);
+
     } catch (error) {
       updateTask(id, { status: "Error", error: (error as Error).message });
     }
