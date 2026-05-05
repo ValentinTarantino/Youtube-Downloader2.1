@@ -97,13 +97,18 @@ async function getInstagramMetadata(url: string): Promise<VideoMetadata> {
     try {
       const res = await fetch(endpoint, {
         headers: RAPID_HEADERS(host),
-        signal: AbortSignal.timeout(10000)
+        // Reducimos a 5s para que si falla, la segunda tenga tiempo de responder en Vercel
+        signal: AbortSignal.timeout(5000) 
       });
       if (!res.ok) return null;
       const text = await res.text();
       if (text.trim().startsWith('<')) return null;
       const data = JSON.parse(text);
-      if (data?.status === 'error' || data?.message?.includes('error')) return null;
+      
+      // Verificamos que al menos traiga un link de video para considerarla "exitosa"
+      const hasLink = deepSearch(data, ['download_url', 'video_url', 'video', 'url', 'mp4']);
+      if (!hasLink || data?.status === 'error') return null;
+      
       return data;
     } catch { return null; }
   };
@@ -114,23 +119,22 @@ async function getInstagramMetadata(url: string): Promise<VideoMetadata> {
     `https://${PRIMARY_HOST}/download?url=${encodeURIComponent(cleanUrl)}`
   );
 
-  // Fallback API call if primary fails
+  // Fallback API call if primary fails or has no link
   if (!data) {
+    console.log('[INSTAGRAM] Primary API failed or timed out, trying fallback...');
     data = await tryApi(
       FALLBACK_HOST,
       `https://${FALLBACK_HOST}/download?url=${encodeURIComponent(cleanUrl)}`
     );
   }
 
-  // Log for debugging — remove once confirmed working
-  if (data) console.log('[INSTAGRAM RESPONSE]', JSON.stringify(data).substring(0, 500));
+  // Log for debugging
+  if (data) console.log('[INSTAGRAM RESPONSE]', JSON.stringify(data).substring(0, 300));
 
-  // Helper: extract a plain string from a value that might be an object
   const extractString = (val: any): string | null => {
     if (!val) return null;
     if (typeof val === 'string' && val.trim()) return val.trim();
     if (typeof val === 'object') {
-      // Try common string fields inside the object
       for (const k of ['username', 'name', 'full_name', 'nickname', 'text', 'value']) {
         if (typeof val[k] === 'string' && val[k].trim()) return val[k].trim();
       }
@@ -156,7 +160,6 @@ async function getInstagramMetadata(url: string): Promise<VideoMetadata> {
       ? `https://images.weserv.nl/?url=${encodeURIComponent(thumbStr)}&output=webp&n=-1`
       : '',
     author: authorStr,
-    // Use real profile pic if available, otherwise fall back to unavatar
     authorAvatar: avatarStr
       ? `https://images.weserv.nl/?url=${encodeURIComponent(avatarStr)}&output=webp&w=100&h=100&fit=cover&mask=circle`
       : `https://unavatar.io/instagram/${encodeURIComponent(authorStr)}`,
@@ -164,6 +167,7 @@ async function getInstagramMetadata(url: string): Promise<VideoMetadata> {
     directUrls: videoStr ? { video: videoStr, audio: '' } : undefined
   };
 }
+
 
 
 // =============================================================

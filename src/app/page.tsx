@@ -213,7 +213,7 @@ export default function Home() {
       </section>
 
       <footer className="mt-auto pt-16 pb-8 text-white/20 text-[10px] md:text-xs font-medium tracking-widest uppercase z-10 text-center">
-        ClipDrop • Universal Media Suite • Next.js & Master Engine
+        ClipDrop • Universal Media Suite • Next.js
       </footer>
     </main>
   );
