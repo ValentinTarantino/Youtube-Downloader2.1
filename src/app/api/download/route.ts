@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Innertube, Platform, ClientType } from "youtubei.js";
+import { createColdStartToken } from "bgutils-js/webpo";
 import contentDisposition from "content-disposition";
 import http from "http";
 import { spawn } from "child_process";
@@ -43,17 +44,34 @@ class MemoryCache {
 // Cache Innertube instances per client type for performance and session reuse
 const innertubeSessions = new Map<string, Promise<Innertube>>();
 
+/**
+ * Computes or retrieves a valid Proof of Origin (PO) token for YouTube BotGuard verification.
+ */
+function getPoTokenForVideo(videoId: string): string | undefined {
+  if (process.env.YT_PO_TOKEN) return process.env.YT_PO_TOKEN;
+  try {
+    return createColdStartToken(videoId);
+  } catch (err) {
+    console.warn("[BGUTILS COLD START TOKEN GENERATION ERROR]:", err);
+    return undefined;
+  }
+}
+
 function getInnertubeSession(clientType: string): Promise<Innertube> {
   const existing = innertubeSessions.get(clientType);
   if (existing) return existing;
 
   const poToken = process.env.YT_PO_TOKEN || undefined;
+  const cookie = process.env.YT_COOKIES || process.env.YT_COOKIE || undefined;
+  const visitorData = process.env.YT_VISITOR_DATA || undefined;
 
   const sessionPromise = Innertube.create({
     client_type: clientType as any,
     cache: new MemoryCache(),
     generate_session_locally: true,
     po_token: poToken,
+    cookie: cookie,
+    visitor_data: visitorData,
   }).catch((err) => {
     innertubeSessions.delete(clientType);
     throw err;
@@ -490,14 +508,30 @@ async function getHighQualityYouTubeVideoStream(
   abortSignal?: AbortSignal
 ): Promise<ReadableStream<Uint8Array>> {
   const targetHeight = parseTargetHeight(quality);
-  const clients = [ClientType.IOS, ClientType.MWEB, ClientType.ANDROID];
+  const clients = [
+    ClientType.TV_EMBEDDED,
+    ClientType.TV,
+    ClientType.WEB_EMBEDDED,
+    ClientType.IOS,
+    ClientType.MWEB,
+    ClientType.ANDROID,
+  ];
+  const pot = getPoTokenForVideo(videoId);
 
   let lastErr: Error | null = null;
 
   for (const ctype of clients) {
     try {
       const yt = await getInnertubeSession(ctype);
-      const info = await yt.getBasicInfo(videoId);
+      if (yt.session.player && pot) {
+        yt.session.player.po_token = pot;
+      }
+      const info = await yt.getBasicInfo(videoId, {
+        client: ctype as any,
+        po_token: pot,
+      });
+
+      if ((info as any).playability_status?.status === "LOGIN_REQUIRED") continue;
 
       const allVideoFormats = [
         ...(info.streaming_data?.formats || []),
@@ -523,7 +557,8 @@ async function getHighQualityYouTubeVideoStream(
         const stream = await yt.download(videoId, {
           itag: matchingVideo.itag,
           type: "video+audio",
-        });
+          po_token: pot,
+        } as any);
         return stream;
       }
 
@@ -561,19 +596,33 @@ async function getHighQualityYouTubeVideoStream(
  */
 async function fetchFormatStream(
   format: any,
-  player: any
+  player: any,
+  pot?: string
 ): Promise<{ stream: ReadableStream<Uint8Array>; contentLength: number; mimeType: string } | null> {
   try {
-    const downloadUrl = format.url || (await format.decipher(player));
+    let downloadUrl = format.url || (await format.decipher(player));
     if (!downloadUrl) return null;
 
-    const response = await fetch(downloadUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        Accept: "*/*",
-      },
-    });
+    if (pot && !downloadUrl.includes("pot=")) {
+      const sep = downloadUrl.includes("?") ? "&" : "?";
+      downloadUrl = `${downloadUrl}${sep}pot=${encodeURIComponent(pot)}`;
+    }
+
+    const headers: Record<string, string> = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+      Accept: "*/*",
+      "Accept-Encoding": "identity",
+      Origin: "https://www.youtube.com",
+      Referer: "https://www.youtube.com/",
+    };
+
+    const cookie = process.env.YT_COOKIES || process.env.YT_COOKIE;
+    if (cookie) {
+      headers["Cookie"] = cookie;
+    }
+
+    const response = await fetch(downloadUrl, { headers });
 
     if (!response.ok || !response.body) {
       return null;
@@ -594,31 +643,118 @@ async function fetchFormatStream(
 }
 
 /**
+ * External high-res proxy extractor fallback for YouTube streams when datacenter IPs are blocked.
+ */
+async function fetchCobaltStream(
+  videoUrl: string,
+  type: "video" | "audio",
+  quality: string | null
+): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string; contentLength: number; extension: string } | null> {
+  const targetHeight = parseTargetHeight(quality);
+  const instances = [
+    "https://api.cobalt.tools",
+    "https://cobalt.api.kwiatekm.tokyo",
+  ];
+
+  for (const instance of instances) {
+    try {
+      const res = await fetch(`${instance}/`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: videoUrl,
+          vQuality: String(targetHeight),
+          isAudioOnly: type === "audio",
+          aFormat: "mp3",
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!res.ok) continue;
+      const data = await res.json();
+      const targetUrl = data.url;
+      if (!targetUrl || typeof targetUrl !== "string") continue;
+
+      const upstream = await fetch(targetUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        },
+      });
+
+      if (!upstream.ok || !upstream.body) continue;
+
+      const contentLength = Number(upstream.headers.get("content-length") || 0);
+      const ext = type === "audio" ? "mp3" : "mp4";
+      const mime = type === "audio" ? "audio/mpeg" : "video/mp4";
+
+      return {
+        stream: upstream.body as ReadableStream<Uint8Array>,
+        contentLength,
+        mimeType: mime,
+        extension: ext,
+      };
+    } catch (err) {
+      console.warn(`[COBALT ERROR ${instance}]:`, err);
+    }
+  }
+
+  return null;
+}
+
+/**
  * Resilient fallback stream extractor for videos or audio using Innertube.
- * Prioritizes high-speed direct progressive MP4 (formats with both video and audio) and original adaptive audio,
- * gracefully falling back across clients (Android, MWeb, iOS, Web) with zero 500 crashes on Vercel.
+ * Prioritizes TV_EMBEDDED, TV, WEB_EMBEDDED, and mobile personas with dynamic PO tokens,
+ * bypassing YouTube BotGuard login checks with zero 500 crashes on Vercel.
  */
 async function getWorkingYouTubeStream(
   videoId: string,
   type: "video" | "audio",
   quality: string | null
 ): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string; contentLength: number; extension?: string }> {
-  const clientsToTry = [ClientType.ANDROID, ClientType.MWEB, ClientType.IOS, ClientType.WEB];
+  // TV_EMBEDDED and TV clients do not enforce BotGuard/PO Token challenges on datacenter IPs
+  const clientsToTry = [
+    ClientType.TV_EMBEDDED,
+    ClientType.TV,
+    ClientType.WEB_EMBEDDED,
+    ClientType.ANDROID,
+    ClientType.IOS,
+    ClientType.MWEB,
+    ClientType.WEB,
+  ];
   const targetHeight = parseTargetHeight(quality);
+  const pot = getPoTokenForVideo(videoId);
 
-  const logs: string[] = [];
+  const logs: string[] = [
+    `hasPot: ${!!pot}`,
+    `hasCookies: ${!!(process.env.YT_COOKIES || process.env.YT_COOKIE)}`,
+  ];
   let lastError: Error | null = null;
 
   for (const clientType of clientsToTry) {
     try {
       const yt = await getInnertubeSession(clientType);
-      const info = await yt.getBasicInfo(videoId);
+      if (yt.session.player && pot) {
+        yt.session.player.po_token = pot;
+      }
+
+      const info = await yt.getBasicInfo(videoId, {
+        client: clientType as any,
+        po_token: pot,
+      });
 
       const status = (info as any).playability_status?.status || "UNKNOWN";
       const reason = (info as any).playability_status?.reason || "";
       const progCount = info.streaming_data?.formats?.length || 0;
       const adapCount = info.streaming_data?.adaptive_formats?.length || 0;
       logs.push(`${clientType}: status=${status}${reason ? ` (${reason})` : ""}, prog=${progCount}, adap=${adapCount}`);
+
+      if (status === "LOGIN_REQUIRED" || !info.streaming_data) {
+        continue;
+      }
 
       const progFormats = (info.streaming_data?.formats || []).filter((f) => f.has_video && f.has_audio);
       const adaptiveAudio = (info.streaming_data?.adaptive_formats || []).filter((f) => f.has_audio && !f.has_video);
@@ -632,7 +768,7 @@ async function getWorkingYouTubeStream(
         });
 
         for (const fmt of sortedProg) {
-          const direct = await fetchFormatStream(fmt, yt.session.player);
+          const direct = await fetchFormatStream(fmt, yt.session.player, pot);
           if (direct) {
             return {
               ...direct,
@@ -644,7 +780,7 @@ async function getWorkingYouTubeStream(
         // If direct fetch didn't return, try yt.download with progressive itag
         for (const fmt of sortedProg) {
           try {
-            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "video+audio" });
+            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "video+audio", po_token: pot } as any);
             return {
               stream: rawStream,
               mimeType: "video/mp4",
@@ -666,7 +802,7 @@ async function getWorkingYouTubeStream(
         });
 
         for (const fmt of sortedAudio) {
-          const direct = await fetchFormatStream(fmt, yt.session.player);
+          const direct = await fetchFormatStream(fmt, yt.session.player, pot);
           if (direct) {
             const ext = direct.mimeType.includes("mp4") ? "m4a" : "mp3";
             return {
@@ -679,7 +815,7 @@ async function getWorkingYouTubeStream(
         // 2. Try yt.download with adaptive audio itags
         for (const fmt of sortedAudio) {
           try {
-            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "audio" });
+            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "audio", po_token: pot } as any);
             const ext = fmt.mime_type?.includes("mp4") ? "m4a" : "mp3";
             return {
               stream: rawStream,
@@ -696,7 +832,7 @@ async function getWorkingYouTubeStream(
         // use progressive stream which contains the genuine synchronized AAC audio!
         if (progFormats.length > 0) {
           for (const fmt of progFormats) {
-            const direct = await fetchFormatStream(fmt, yt.session.player);
+            const direct = await fetchFormatStream(fmt, yt.session.player, pot);
             if (direct) {
               return {
                 ...direct,
@@ -711,6 +847,17 @@ async function getWorkingYouTubeStream(
       console.warn(`[INNERTUBE CLIENT ${clientType} FAILED]:`, err);
       lastError = err instanceof Error ? err : new Error(String(err));
     }
+  }
+
+  // Fallback: If all Innertube clients fail or encounter bot protection, query Cobalt API
+  try {
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const cobaltStream = await fetchCobaltStream(videoUrl, type, quality);
+    if (cobaltStream) {
+      return cobaltStream;
+    }
+  } catch (cErr: any) {
+    logs.push(`cobalt fallback failed: ${cErr?.message || cErr}`);
   }
 
   throw new Error(`No available stream found for video: ${videoId}. Diagnostics: [${logs.join(" | ")}]`);

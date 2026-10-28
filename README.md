@@ -4,7 +4,7 @@
 
 ---
 
-## 🌟 Key Features
+##  Key Features
 
 - **Multi-Platform Extraction**:
   - **YouTube**: Downloads videos at 720p, 480p, or 360p with high-efficiency AV1/VP9 compression, and pristine 192kbps MP3 audio.
@@ -20,7 +20,7 @@
 
 ---
 
-## 🛠️ Technologies Used
+##  Technologies Used
 
 ### 1. Web Framework & Runtime
 - **[Next.js 15 (App Router)](https://nextjs.org/)**: Full-stack framework utilizing React Server Components, server actions, and Route Handlers (`/api/download`, `/api/video-info`) for high-throughput media proxying and streaming.
@@ -52,7 +52,7 @@
 
 ---
 
-## 🏗️ Architecture & Engineering Highlights
+##  Architecture & Engineering Highlights
 
 ```mermaid
 flowchart TD
@@ -99,7 +99,7 @@ To bypass YouTube's BotGuard challenges and `403 Forbidden` CDN errors:
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 Youtube-Downloader2.1-main/
@@ -128,51 +128,7 @@ Youtube-Downloader2.1-main/
 └── README.md                       # Documentation
 ```
 
----
 
-## 🚀 Getting Started
-
-### Prerequisites
-- **Node.js**: `v20.0.0` or higher
-- **npm** or **yarn** / **pnpm**
-- **Python**: `3.10` or higher (with `yt-dlp` installed: `pip install yt-dlp`)
-- **FFmpeg**: Installed and accessible in your system's `PATH`
-
-### Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/ValentinTarantino/Youtube-Downloader.git
-   cd Youtube-Downloader
-   ```
-
-2. **Install JavaScript dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Verify Python & FFmpeg**:
-   ```bash
-   python -m yt_dlp --version
-   ffmpeg -version
-   ```
-
-4. **Configure Environment Variables**:
-   Create a `.env.local` file in the root directory:
-   ```env
-   RAPIDAPI_KEY=your_rapidapi_key_here
-   TIKTOK_API_HOST=tiktok-downloader-download-tiktok-videos-without-watermark.p.rapidapi.com
-   INSTAGRAM_API_HOST=instagram-pro-downloader.p.rapidapi.com
-   ```
-
-5. **Start the development server**:
-   ```bash
-   npm run dev
-   ```
-   Open [http://localhost:3000](http://localhost:3000) in your browser.
-
----
-
-## 📄 License
+##  License
 
 This project is open-source and available under the [MIT License](LICENSE).
