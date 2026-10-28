@@ -12,6 +12,9 @@ import fs from "fs";
 import crypto from "crypto";
 import ffmpegPath from "ffmpeg-static";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 function getFfmpegBinary(): string {
   if (ffmpegPath && typeof ffmpegPath === "string" && fs.existsSync(ffmpegPath)) {
     return ffmpegPath;
@@ -1215,30 +1218,12 @@ export async function GET(req: NextRequest) {
             if (fallback.extension) finalExtension = fallback.extension;
           }
         } else {
-          // Audio pipeline: fetch working audio stream
-          let audioFallback = await getWorkingYouTubeStream(videoId, "audio", quality);
+          // Direct high-speed audio pipeline (zero transcode latency, no serverless timeouts)
+          const audioFallback = await getWorkingYouTubeStream(videoId, "audio", quality);
+          finalStream = audioFallback.stream;
+          finalExtension = audioFallback.extension || (audioFallback.mimeType.includes("mp4") ? "m4a" : "mp3");
+          finalMimeType = audioFallback.mimeType;
           if (audioFallback.contentLength) finalContentLength = audioFallback.contentLength;
-
-          if (hasFfmpeg) {
-            try {
-              finalStream = await convertAudioToMp3WebStream(audioFallback.stream, req.signal);
-              finalExtension = "mp3";
-              finalMimeType = "audio/mpeg";
-            } catch (err) {
-              console.warn("[FFMPEG MP3 CONVERT FAILED, REFETCHING DIRECT AUDIO]", err);
-              // Re-fetch clean stream because audioFallback.stream was locked/consumed
-              audioFallback = await getWorkingYouTubeStream(videoId, "audio", quality);
-              finalExtension = audioFallback.extension || (audioFallback.mimeType.includes("mp4") ? "m4a" : "mp3");
-              finalMimeType = audioFallback.mimeType;
-              finalStream = audioFallback.stream;
-              if (audioFallback.contentLength) finalContentLength = audioFallback.contentLength;
-            }
-          } else {
-            // Direct pure audio stream without external FFmpeg (e.g. Vercel)
-            finalExtension = audioFallback.extension || (audioFallback.mimeType.includes("mp4") ? "m4a" : "mp3");
-            finalMimeType = audioFallback.mimeType;
-            finalStream = audioFallback.stream;
-          }
         }
       }
 
