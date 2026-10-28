@@ -32,10 +32,12 @@ const WEBSHARE_PROXIES = [
   "http://voyplyhv:m6ph3gg92ai6@23.26.71.145:5628",
 ];
 
-let proxyRotationIndex = 0;
+let stableProxyAgent: ProxyAgent | undefined;
 
 // Proxy agent configuration for routing through residential / HTTP proxies safely
 function getProxyAgent(): ProxyAgent | undefined {
+  if (stableProxyAgent) return stableProxyAgent;
+
   const raw = (
     process.env.YOUTUBE_PROXY ||
     process.env.HTTP_PROXY ||
@@ -54,34 +56,43 @@ function getProxyAgent(): ProxyAgent | undefined {
     try {
       const parsed = new URL(raw);
       if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-        return new ProxyAgent(raw);
+        stableProxyAgent = new ProxyAgent(raw);
+        return stableProxyAgent;
       }
     } catch {
       console.warn("[PROXY AGENT] Invalid proxy URL provided, falling back to proxy pool:", raw);
     }
   }
 
-  // Automatic fallback to rotating Webshare proxies
-  const fallbackUrl = WEBSHARE_PROXIES[proxyRotationIndex % WEBSHARE_PROXIES.length];
-  proxyRotationIndex++;
-  try {
-    return new ProxyAgent(fallbackUrl);
-  } catch {
-    return undefined;
+  // Stable fallback using Webshare proxies from dashboard
+  for (const proxyUrl of WEBSHARE_PROXIES) {
+    try {
+      stableProxyAgent = new ProxyAgent(proxyUrl);
+      return stableProxyAgent;
+    } catch {}
   }
+  return undefined;
 }
 
 const customFetch: typeof fetch = (input: any, init?: any) => {
+  const url =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.toString()
+      : input && typeof input === "object" && "url" in input
+      ? input.url
+      : String(input);
+
+  // CRITICAL: googlevideo.com CDN streams must NEVER be routed through proxies.
+  // Google Video CDN does not block datacenters or bots (only player APIs do),
+  // and proxying video chunks causes 403 Forbidden IP mismatch and 0-byte downloads.
+  if (url.includes("googlevideo.com")) {
+    return fetch(input, init);
+  }
+
   const agent = getProxyAgent();
   if (agent) {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.toString()
-        : input && typeof input === "object" && "url" in input
-        ? input.url
-        : String(input);
     const method = (init?.method || (input && input.method) || "GET").toUpperCase();
     const headers = init?.headers || (input && input.headers ? input.headers : undefined);
     const body =
@@ -529,58 +540,57 @@ function downloadYouTubeToFile(
 function muxVideoAndAudioWithFFmpeg(
   vUrl: string,
   aUrl: string,
-  vLen: number,
-  aLen: number,
+  _vLen: number,
+  _aLen: number,
   abortSignal?: AbortSignal,
   userAgent?: string
 ): Promise<ReadableStream<Uint8Array>> {
   return new Promise((resolve, reject) => {
-    async function streamChunks(targetUrl: string, totalLen: number, chunkSize: number, res: http.ServerResponse) {
-      let start = 0;
-      while (start < totalLen) {
-        if (res.writableEnded || res.destroyed) break;
-        const end = Math.min(start + chunkSize - 1, totalLen - 1);
-        try {
-          const headers: Record<string, string> = {
-            Range: `bytes=${start}-${end}`,
-            "User-Agent": userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            Accept: "*/*",
-          };
-          const cookie = getActiveCookie();
-          if (cookie) headers["Cookie"] = cookie;
+    async function pipeStreamToRes(targetUrl: string, res: http.ServerResponse) {
+      try {
+        const headers: Record<string, string> = {
+          "User-Agent": userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          Accept: "*/*",
+        };
+        const cookie = getActiveCookie();
+        if (cookie) headers["Cookie"] = cookie;
 
-          const upstream = await customFetch(targetUrl, { headers });
-          if (!upstream.ok && upstream.status !== 206) break;
-          if (upstream.body) {
-            const reader = upstream.body.getReader();
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              const ok = res.write(Buffer.from(value));
-              if (!ok) await new Promise((r) => res.once("drain", r));
-            }
-          }
-          start = end + 1;
-        } catch {
-          break;
+        // CRITICAL: Direct high-speed streaming from googlevideo CDN without proxy
+        const upstream = await fetch(targetUrl, { headers });
+        if (!upstream.ok || !upstream.body) {
+          console.warn(`[MUX BRIDGE UPSTREAM ERROR]: HTTP ${upstream.status} for ${targetUrl.substring(0, 80)}`);
+          if (!res.writableEnded) res.end();
+          return;
         }
+
+        const reader = upstream.body.getReader();
+        while (true) {
+          if (res.writableEnded || res.destroyed) break;
+          const { done, value } = await reader.read();
+          if (done) break;
+          const ok = res.write(Buffer.from(value));
+          if (!ok) await new Promise((r) => res.once("drain", r));
+        }
+      } catch (err) {
+        console.warn("[MUX BRIDGE PIPE ERROR]:", err);
+      } finally {
+        if (!res.writableEnded) res.end();
       }
-      res.end();
     }
 
     const server = http.createServer((req, res) => {
       if (req.url === "/video") {
         res.writeHead(200, {
           "Content-Type": "video/mp4",
-          "Content-Length": vLen,
+          "Transfer-Encoding": "chunked",
         });
-        streamChunks(vUrl, vLen, 512 * 1024, res);
+        pipeStreamToRes(vUrl, res);
       } else if (req.url === "/audio") {
         res.writeHead(200, {
           "Content-Type": "audio/mp4",
-          "Content-Length": aLen,
+          "Transfer-Encoding": "chunked",
         });
-        streamChunks(aUrl, aLen, 256 * 1024, res);
+        pipeStreamToRes(aUrl, res);
       } else {
         res.writeHead(404);
         res.end();
@@ -651,11 +661,11 @@ async function getHighQualityYouTubeVideoStream(
 ): Promise<ReadableStream<Uint8Array>> {
   const targetHeight = parseTargetHeight(quality);
   const clients = [
-    ClientType.ANDROID,
     ClientType.MWEB,
+    ClientType.WEB,
+    ClientType.ANDROID,
     ClientType.MUSIC,
     ClientType.IOS,
-    ClientType.WEB,
   ];
   const pot = getPoTokenForVideo(videoId);
 
@@ -782,9 +792,11 @@ async function fetchFormatStream(
       headers["Cookie"] = cookie;
     }
 
-    const response = await customFetch(downloadUrl, { headers });
+    // Direct fetch for googlevideo CDN streams without proxy
+    const response = await fetch(downloadUrl, { headers });
 
     if (!response.ok || !response.body) {
+      console.warn(`[STREAM FETCH FAILED]: HTTP ${response.status} for itag ${format?.itag}`);
       return null;
     }
 
@@ -954,11 +966,11 @@ async function getWorkingYouTubeStream(
   quality: string | null
 ): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string; contentLength: number; extension?: string }> {
   const clientsToTry = [
-    ClientType.ANDROID,
     ClientType.MWEB,
+    ClientType.WEB,
+    ClientType.ANDROID,
     ClientType.MUSIC,
     ClientType.IOS,
-    ClientType.WEB,
   ];
   const targetHeight = parseTargetHeight(quality);
   const pot = getPoTokenForVideo(videoId);
