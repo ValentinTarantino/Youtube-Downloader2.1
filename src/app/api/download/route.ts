@@ -606,12 +606,19 @@ async function getWorkingYouTubeStream(
   const clientsToTry = [ClientType.ANDROID, ClientType.MWEB, ClientType.IOS, ClientType.WEB];
   const targetHeight = parseTargetHeight(quality);
 
+  const logs: string[] = [];
   let lastError: Error | null = null;
 
   for (const clientType of clientsToTry) {
     try {
       const yt = await getInnertubeSession(clientType);
       const info = await yt.getBasicInfo(videoId);
+
+      const status = (info as any).playability_status?.status || "UNKNOWN";
+      const reason = (info as any).playability_status?.reason || "";
+      const progCount = info.streaming_data?.formats?.length || 0;
+      const adapCount = info.streaming_data?.adaptive_formats?.length || 0;
+      logs.push(`${clientType}: status=${status}${reason ? ` (${reason})` : ""}, prog=${progCount}, adap=${adapCount}`);
 
       const progFormats = (info.streaming_data?.formats || []).filter((f) => f.has_video && f.has_audio);
       const adaptiveAudio = (info.streaming_data?.adaptive_formats || []).filter((f) => f.has_audio && !f.has_video);
@@ -644,7 +651,9 @@ async function getWorkingYouTubeStream(
               contentLength: typeof fmt.content_length === "number" ? fmt.content_length : 0,
               extension: "mp4",
             };
-          } catch {}
+          } catch (e: any) {
+            logs.push(`${clientType} dl itag ${fmt.itag}: ${e.message}`);
+          }
         }
       } else {
         // type === "audio"
@@ -678,7 +687,9 @@ async function getWorkingYouTubeStream(
               contentLength: typeof fmt.content_length === "number" ? fmt.content_length : 0,
               extension: ext,
             };
-          } catch {}
+          } catch (e: any) {
+            logs.push(`${clientType} dl audio ${fmt.itag}: ${e.message}`);
+          }
         }
 
         // 3. Fallback: if adaptive audio is blocked/unavailable on serverless IP,
@@ -695,13 +706,14 @@ async function getWorkingYouTubeStream(
           }
         }
       }
-    } catch (err) {
+    } catch (err: any) {
+      logs.push(`${clientType} failed: ${err.message}`);
       console.warn(`[INNERTUBE CLIENT ${clientType} FAILED]:`, err);
       lastError = err instanceof Error ? err : new Error(String(err));
     }
   }
 
-  throw lastError || new Error(`No available stream found for video: ${videoId}`);
+  throw new Error(`No available stream found for video: ${videoId}. Diagnostics: [${logs.join(" | ")}]`);
 }
 
 /**
