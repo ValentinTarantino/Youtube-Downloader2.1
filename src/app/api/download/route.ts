@@ -19,6 +19,21 @@ function getFfmpegBinary(): string {
   return "ffmpeg";
 }
 
+const WEBSHARE_PROXIES = [
+  "http://voyplyhv:m6ph3gg92ai6@45.38.107.97:6014",
+  "http://voyplyhv:m6ph3gg92ai6@64.137.96.74:6641",
+  "http://voyplyhv:m6ph3gg92ai6@198.23.243.226:6361",
+  "http://voyplyhv:m6ph3gg92ai6@38.154.185.97:6370",
+  "http://voyplyhv:m6ph3gg92ai6@84.247.60.125:6095",
+  "http://voyplyhv:m6ph3gg92ai6@191.96.254.138:6185",
+  "http://voyplyhv:m6ph3gg92ai6@198.46.161.42:5092",
+  "http://voyplyhv:m6ph3gg92ai6@64.137.10.153:5803",
+  "http://voyplyhv:m6ph3gg92ai6@104.164.49.38:7693",
+  "http://voyplyhv:m6ph3gg92ai6@23.26.71.145:5628",
+];
+
+let proxyRotationIndex = 0;
+
 // Proxy agent configuration for routing through residential / HTTP proxies safely
 function getProxyAgent(): ProxyAgent | undefined {
   const raw = (
@@ -28,25 +43,37 @@ function getProxyAgent(): ProxyAgent | undefined {
     ""
   ).trim();
 
-  if (!raw || raw === "undefined" || raw === "null") {
+  // If user pasted cookie in YOUTUBE_PROXY, ignore it here
+  if (
+    raw &&
+    !raw.includes("__Secure-") &&
+    !raw.includes("LOGIN_INFO=") &&
+    raw !== "undefined" &&
+    raw !== "null"
+  ) {
+    try {
+      const parsed = new URL(raw);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        return new ProxyAgent(raw);
+      }
+    } catch {
+      console.warn("[PROXY AGENT] Invalid proxy URL provided, falling back to proxy pool:", raw);
+    }
+  }
+
+  // Automatic fallback to rotating Webshare proxies
+  const fallbackUrl = WEBSHARE_PROXIES[proxyRotationIndex % WEBSHARE_PROXIES.length];
+  proxyRotationIndex++;
+  try {
+    return new ProxyAgent(fallbackUrl);
+  } catch {
     return undefined;
   }
-
-  try {
-    const parsed = new URL(raw);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-      return new ProxyAgent(raw);
-    }
-  } catch {
-    console.warn("[PROXY AGENT] Invalid proxy URL provided, ignoring:", raw);
-  }
-  return undefined;
 }
 
-const proxyAgent = getProxyAgent();
-
 const customFetch: typeof fetch = (input: any, init?: any) => {
-  if (proxyAgent) {
+  const agent = getProxyAgent();
+  if (agent) {
     const url =
       typeof input === "string"
         ? input
@@ -67,7 +94,7 @@ const customFetch: typeof fetch = (input: any, init?: any) => {
       method,
       headers,
       body,
-      dispatcher: proxyAgent,
+      dispatcher: agent,
     }) as any;
   }
   return fetch(input, init);
@@ -104,7 +131,19 @@ function getActiveCookie(): string | undefined {
     process.env.YT_COOKIE ||
     process.env.COOKIE ||
     process.env.COOKIES;
-  return formatCookieString(envCookie) || EMBEDDED_FALLBACK_COOKIE;
+  if (envCookie) return formatCookieString(envCookie);
+
+  // If user pasted cookie in YOUTUBE_PROXY variable by mistake:
+  const proxyVar = (process.env.YOUTUBE_PROXY || "").trim();
+  if (
+    proxyVar.includes("__Secure-") ||
+    proxyVar.includes("LOGIN_INFO=") ||
+    proxyVar.includes("VISITOR_INFO1_LIVE=")
+  ) {
+    return formatCookieString(proxyVar);
+  }
+
+  return EMBEDDED_FALLBACK_COOKIE;
 }
 
 // Enable JavaScript deciphering evaluation globally for player n-sig & s-sig deobfuscation
@@ -169,7 +208,7 @@ function getInnertubeSession(clientType: string, poToken?: string): Promise<Inne
     po_token: poToken || process.env.YT_PO_TOKEN || undefined,
     cookie: cookie,
     visitor_data: visitorData,
-    fetch: proxyAgent ? customFetch : undefined,
+    fetch: customFetch,
   }).catch((err) => {
     innertubeSessions.delete(cacheKey);
     throw err;
@@ -510,7 +549,7 @@ function muxVideoAndAudioWithFFmpeg(
           const cookie = getActiveCookie();
           if (cookie) headers["Cookie"] = cookie;
 
-          const upstream = await (proxyAgent ? customFetch(targetUrl, { headers }) : fetch(targetUrl, { headers }));
+          const upstream = await customFetch(targetUrl, { headers });
           if (!upstream.ok && upstream.status !== 206) break;
           if (upstream.body) {
             const reader = upstream.body.getReader();
@@ -612,9 +651,9 @@ async function getHighQualityYouTubeVideoStream(
 ): Promise<ReadableStream<Uint8Array>> {
   const targetHeight = parseTargetHeight(quality);
   const clients = [
+    ClientType.ANDROID,
     ClientType.MWEB,
     ClientType.MUSIC,
-    ClientType.ANDROID,
     ClientType.IOS,
     ClientType.WEB,
   ];
@@ -743,7 +782,7 @@ async function fetchFormatStream(
       headers["Cookie"] = cookie;
     }
 
-    const response = await (proxyAgent ? customFetch(downloadUrl, { headers }) : fetch(downloadUrl, { headers }));
+    const response = await customFetch(downloadUrl, { headers });
 
     if (!response.ok || !response.body) {
       return null;
@@ -915,9 +954,9 @@ async function getWorkingYouTubeStream(
   quality: string | null
 ): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string; contentLength: number; extension?: string }> {
   const clientsToTry = [
+    ClientType.ANDROID,
     ClientType.MWEB,
     ClientType.MUSIC,
-    ClientType.ANDROID,
     ClientType.IOS,
     ClientType.WEB,
   ];
@@ -928,7 +967,7 @@ async function getWorkingYouTubeStream(
   const logs: string[] = [
     `hasPot: ${!!pot}`,
     `hasCookies: ${!!cookie}`,
-    `hasProxy: ${!!proxyAgent}`,
+    `hasProxy: ${!!getProxyAgent()}`,
   ];
   let lastError: Error | null = null;
 
@@ -1044,7 +1083,7 @@ async function convertAudioToMp3WebStream(
   const hasFfmpeg = await checkFfmpeg();
   if (!hasFfmpeg) return rawWebStream;
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     try {
       const nodeReadable = Readable.fromWeb(rawWebStream as any);
       const ffmpeg = spawn(getFfmpegBinary(), [
@@ -1071,20 +1110,21 @@ async function convertAudioToMp3WebStream(
       }
 
       ffmpeg.on("error", (err) => {
-        console.warn("[FFMPEG NOT FOUND / ERROR, FALLBACK TO RAW AUDIO]:", err);
         cleanup();
-        resolve(rawWebStream);
+        reject(err);
       });
 
       nodeReadable.pipe(ffmpeg.stdin);
-      nodeReadable.on("error", cleanup);
+      nodeReadable.on("error", (err) => {
+        cleanup();
+        reject(err);
+      });
       ffmpeg.stdin.on("error", () => {});
       ffmpeg.on("close", cleanup);
 
       resolve(Readable.toWeb(ffmpeg.stdout as any) as ReadableStream<Uint8Array>);
     } catch (err) {
-      console.warn("[FFMPEG] Fallback to direct audio stream:", err);
-      resolve(rawWebStream);
+      reject(err);
     }
   });
 }
@@ -1163,24 +1203,29 @@ export async function GET(req: NextRequest) {
             if (fallback.extension) finalExtension = fallback.extension;
           }
         } else {
-          const fallback = await getWorkingYouTubeStream(videoId, "audio", quality);
-          if (fallback.contentLength) finalContentLength = fallback.contentLength;
+          // Audio pipeline: fetch working audio stream
+          let audioFallback = await getWorkingYouTubeStream(videoId, "audio", quality);
+          if (audioFallback.contentLength) finalContentLength = audioFallback.contentLength;
 
           if (hasFfmpeg) {
             try {
-              finalStream = await convertAudioToMp3WebStream(fallback.stream, req.signal);
+              finalStream = await convertAudioToMp3WebStream(audioFallback.stream, req.signal);
               finalExtension = "mp3";
               finalMimeType = "audio/mpeg";
-            } catch {
-              finalExtension = fallback.extension || (fallback.mimeType.includes("mp4") ? "m4a" : "mp3");
-              finalMimeType = fallback.mimeType;
-              finalStream = fallback.stream;
+            } catch (err) {
+              console.warn("[FFMPEG MP3 CONVERT FAILED, REFETCHING DIRECT AUDIO]", err);
+              // Re-fetch clean stream because audioFallback.stream was locked/consumed
+              audioFallback = await getWorkingYouTubeStream(videoId, "audio", quality);
+              finalExtension = audioFallback.extension || (audioFallback.mimeType.includes("mp4") ? "m4a" : "mp3");
+              finalMimeType = audioFallback.mimeType;
+              finalStream = audioFallback.stream;
+              if (audioFallback.contentLength) finalContentLength = audioFallback.contentLength;
             }
           } else {
             // Direct pure audio stream without external FFmpeg (e.g. Vercel)
-            finalExtension = fallback.extension || (fallback.mimeType.includes("mp4") ? "m4a" : "mp3");
-            finalMimeType = fallback.mimeType;
-            finalStream = fallback.stream;
+            finalExtension = audioFallback.extension || (audioFallback.mimeType.includes("mp4") ? "m4a" : "mp3");
+            finalMimeType = audioFallback.mimeType;
+            finalStream = audioFallback.stream;
           }
         }
       }
