@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Innertube, Platform, ClientType } from "youtubei.js";
 import { createColdStartToken } from "bgutils-js/webpo";
+import { ProxyAgent, fetch as undiciFetch } from "undici";
 import contentDisposition from "content-disposition";
 import http from "http";
 import { spawn } from "child_process";
@@ -9,6 +10,60 @@ import os from "os";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+
+// Proxy agent configuration for routing through residential / HTTP proxies
+const rawProxyUrl = process.env.YOUTUBE_PROXY || process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
+const proxyAgent = rawProxyUrl ? new ProxyAgent(rawProxyUrl) : undefined;
+
+const customFetch: typeof fetch = (input: any, init?: any) => {
+  if (proxyAgent) {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+        ? input.toString()
+        : input && typeof input === "object" && "url" in input
+        ? input.url
+        : String(input);
+    const method = (init?.method || (input && input.method) || "GET").toUpperCase();
+    const headers = init?.headers || (input && input.headers ? input.headers : undefined);
+    const body =
+      method === "GET" || method === "HEAD"
+        ? undefined
+        : init?.body ?? (input && input.body ? input.body : undefined);
+
+    return undiciFetch(url, {
+      ...init,
+      method,
+      headers,
+      body,
+      dispatcher: proxyAgent,
+    }) as any;
+  }
+  return fetch(input, init);
+};
+
+/**
+ * Normalizes cookies from either Netscape/cookies.txt format or standard Header string.
+ */
+function formatCookieString(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  if (raw.includes("\t") || raw.startsWith("#")) {
+    const formatted = raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+      .map((line) => {
+        const parts = line.split("\t");
+        if (parts.length >= 7) return `${parts[5]}=${parts[6]}`;
+        return "";
+      })
+      .filter(Boolean)
+      .join("; ");
+    return formatted || undefined;
+  }
+  return raw.replace(/[\r\n]+/g, " ").trim() || undefined;
+}
 
 // Enable JavaScript deciphering evaluation globally for player n-sig & s-sig deobfuscation
 (Platform.shim as any).eval = async (data: any, env: any = {}) => {
@@ -62,7 +117,8 @@ function getInnertubeSession(clientType: string, poToken?: string): Promise<Inne
   const existing = innertubeSessions.get(cacheKey);
   if (existing) return existing;
 
-  const cookie = process.env.YT_COOKIES || process.env.YT_COOKIE || undefined;
+  const rawCookie = process.env.YT_COOKIES || process.env.YT_COOKIE;
+  const cookie = formatCookieString(rawCookie);
   const visitorData = process.env.YT_VISITOR_DATA || undefined;
 
   const sessionPromise = Innertube.create({
@@ -72,6 +128,7 @@ function getInnertubeSession(clientType: string, poToken?: string): Promise<Inne
     po_token: poToken || process.env.YT_PO_TOKEN || undefined,
     cookie: cookie,
     visitor_data: visitorData,
+    fetch: proxyAgent ? customFetch : undefined,
   }).catch((err) => {
     innertubeSessions.delete(cacheKey);
     throw err;
@@ -612,12 +669,12 @@ async function fetchFormatStream(
       Referer: "https://www.youtube.com/",
     };
 
-    const cookie = process.env.YT_COOKIES || process.env.YT_COOKIE;
+    const cookie = formatCookieString(process.env.YT_COOKIES || process.env.YT_COOKIE);
     if (cookie) {
       headers["Cookie"] = cookie;
     }
 
-    const response = await fetch(downloadUrl, { headers });
+    const response = await (proxyAgent ? customFetch(downloadUrl, { headers }) : fetch(downloadUrl, { headers }));
 
     if (!response.ok || !response.body) {
       return null;
@@ -798,9 +855,12 @@ async function getWorkingYouTubeStream(
   const targetHeight = parseTargetHeight(quality);
   const pot = getPoTokenForVideo(videoId);
 
+  const rawCookie = process.env.YT_COOKIES || process.env.YT_COOKIE;
+  const cookie = formatCookieString(rawCookie);
   const logs: string[] = [
     `hasPot: ${!!pot}`,
-    `hasCookies: ${!!(process.env.YT_COOKIES || process.env.YT_COOKIE)}`,
+    `hasCookies: ${!!cookie}`,
+    `hasProxy: ${!!proxyAgent}`,
   ];
   let lastError: Error | null = null;
 
