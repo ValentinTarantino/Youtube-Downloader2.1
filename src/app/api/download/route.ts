@@ -19,9 +19,31 @@ function getFfmpegBinary(): string {
   return "ffmpeg";
 }
 
-// Proxy agent configuration for routing through residential / HTTP proxies
-const rawProxyUrl = process.env.YOUTUBE_PROXY || process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
-const proxyAgent = rawProxyUrl ? new ProxyAgent(rawProxyUrl) : undefined;
+// Proxy agent configuration for routing through residential / HTTP proxies safely
+function getProxyAgent(): ProxyAgent | undefined {
+  const raw = (
+    process.env.YOUTUBE_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.HTTPS_PROXY ||
+    ""
+  ).trim();
+
+  if (!raw || raw === "undefined" || raw === "null") {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return new ProxyAgent(raw);
+    }
+  } catch {
+    console.warn("[PROXY AGENT] Invalid proxy URL provided, ignoring:", raw);
+  }
+  return undefined;
+}
+
+const proxyAgent = getProxyAgent();
 
 const customFetch: typeof fetch = (input: any, init?: any) => {
   if (proxyAgent) {
