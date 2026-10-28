@@ -95,6 +95,18 @@ function formatCookieString(raw?: string): string | undefined {
   return raw.replace(/[\r\n]+/g, " ").trim() || undefined;
 }
 
+const EMBEDDED_FALLBACK_COOKIE =
+  "__Secure-YNID=CusBCAUSnQEB8QZuZupk128MsD0suGAk1gLfqBTNSV3M7WGjPhR9fhrF5UoYKKTPcw3NWTCYTNANrDiYFC6braacXX9Vz38k_tF5hY21NvKTqgRRP_ifuc1oK4nveRoUxeNZsWLv1DkrnkJ_3bXAF8tOQuV4repTYRHXfUuOoaBXDrA-DJ9bGkOuH6wM-ub67RV2BrFB6YwYJDik7j0h5rNvHlPMKAUyRQHeqZ1PIbNfcxhEzPMEOMfehtfB9kvr3TZ7dQ2cKN7hoP0-C0-JgsyM5xZstFnA778hWelqNn6PpvRPe92jdjts7VqoCw; __Secure-ROLLOUT_TOKEN=CPKUjovn2L-togEQsIzauO6slAMYra26obbblwM%3D; VISITOR_INFO1_LIVE=Mkab1BIHgnA; VISITOR_PRIVACY_METADATA=CgJBUhIEGgAgGg%3D%3D; __Secure-1PSIDCC=APD_SKEX2dWEXxIJnUERzDrqxcBXiJR5mDAVsKRnvLmYaQlYGqsmlKeJF9gsngi8KHNlDJmAODs; LOGIN_INFO=AFmmF2swRgIhAJ8ICo-iuX3yjoh4NYpWZYIwQ1J4jCA8LWlSdciEqm7CAiEAlMEczKr-B2V3Gqwy0kE5-5DkcQ_z2LhtxJUJWVMsyRA:QUQ3MjNmeEpFeDcwb0tiTnZybkt6ZE9hNzZjc0FsRXlYWkJJaWZTZ3gwLTdBXzlESFY2eUR6MVJnQ3R3QmdjX29QNE4xX1VieVdkSE8wSFgxOXF5eTNiVWIzdDNqUTJEZFF4MkRSaWVZRnZUREVHdHdENWhENUNQOGlZRUNJS3hwUFRiVjFwZDBDdW1YWFYyVVpLSE5WaW9nVHh3NHVHN19n; YSC=BU6cozBzm3k";
+
+function getActiveCookie(): string | undefined {
+  const envCookie =
+    process.env.YT_COOKIES ||
+    process.env.YT_COOKIE ||
+    process.env.COOKIE ||
+    process.env.COOKIES;
+  return formatCookieString(envCookie) || EMBEDDED_FALLBACK_COOKIE;
+}
+
 // Enable JavaScript deciphering evaluation globally for player n-sig & s-sig deobfuscation
 (Platform.shim as any).eval = async (data: any, env: any = {}) => {
   const keys = Object.keys(env);
@@ -147,8 +159,7 @@ function getInnertubeSession(clientType: string, poToken?: string): Promise<Inne
   const existing = innertubeSessions.get(cacheKey);
   if (existing) return existing;
 
-  const rawCookie = process.env.YT_COOKIES || process.env.YT_COOKIE;
-  const cookie = formatCookieString(rawCookie);
+  const cookie = getActiveCookie();
   const visitorData = process.env.YT_VISITOR_DATA || undefined;
 
   const sessionPromise = Innertube.create({
@@ -496,7 +507,7 @@ function muxVideoAndAudioWithFFmpeg(
             "User-Agent": userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             Accept: "*/*",
           };
-          const cookie = formatCookieString(process.env.YT_COOKIES || process.env.YT_COOKIE);
+          const cookie = getActiveCookie();
           if (cookie) headers["Cookie"] = cookie;
 
           const upstream = await (proxyAgent ? customFetch(targetUrl, { headers }) : fetch(targetUrl, { headers }));
@@ -727,7 +738,7 @@ async function fetchFormatStream(
       "Accept-Encoding": "identity",
     };
 
-    const cookie = formatCookieString(process.env.YT_COOKIES || process.env.YT_COOKIE);
+    const cookie = getActiveCookie();
     if (cookie) {
       headers["Cookie"] = cookie;
     }
@@ -913,8 +924,7 @@ async function getWorkingYouTubeStream(
   const targetHeight = parseTargetHeight(quality);
   const pot = getPoTokenForVideo(videoId);
 
-  const rawCookie = process.env.YT_COOKIES || process.env.YT_COOKIE;
-  const cookie = formatCookieString(rawCookie);
+  const cookie = getActiveCookie();
   const logs: string[] = [
     `hasPot: ${!!pot}`,
     `hasCookies: ${!!cookie}`,
