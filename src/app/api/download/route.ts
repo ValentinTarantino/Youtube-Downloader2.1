@@ -508,26 +508,26 @@ async function getHighQualityYouTubeVideoStream(
   abortSignal?: AbortSignal
 ): Promise<ReadableStream<Uint8Array>> {
   const targetHeight = parseTargetHeight(quality);
-  const clients = [
-    ClientType.TV_EMBEDDED,
-    ClientType.TV,
-    ClientType.WEB_EMBEDDED,
-    ClientType.IOS,
-    ClientType.MWEB,
-    ClientType.ANDROID,
+  const clients: { sessionType: any; clientName: "TV_EMBEDDED" | "TV" | "WEB_EMBEDDED" | "IOS" | "MWEB" | "ANDROID" }[] = [
+    { sessionType: ClientType.TV_EMBEDDED, clientName: "TV_EMBEDDED" },
+    { sessionType: ClientType.TV, clientName: "TV" },
+    { sessionType: ClientType.WEB_EMBEDDED, clientName: "WEB_EMBEDDED" },
+    { sessionType: ClientType.IOS, clientName: "IOS" },
+    { sessionType: ClientType.MWEB, clientName: "MWEB" },
+    { sessionType: ClientType.ANDROID, clientName: "ANDROID" },
   ];
   const pot = getPoTokenForVideo(videoId);
 
   let lastErr: Error | null = null;
 
-  for (const ctype of clients) {
+  for (const cand of clients) {
     try {
-      const yt = await getInnertubeSession(ctype);
+      const yt = await getInnertubeSession(cand.sessionType);
       if (yt.session.player && pot) {
         yt.session.player.po_token = pot;
       }
       const info = await yt.getBasicInfo(videoId, {
-        client: ctype as any,
+        client: cand.clientName,
         po_token: pot,
       });
 
@@ -706,6 +706,84 @@ async function fetchCobaltStream(
 }
 
 /**
+ * External high-res Invidious proxy extractor fallback for YouTube streams when datacenter IPs are blocked.
+ */
+async function fetchInvidiousStream(
+  videoId: string,
+  type: "video" | "audio",
+  quality: string | null
+): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string; contentLength: number; extension: string } | null> {
+  const instances = [
+    "https://inv.tux.pizza",
+    "https://invidious.nerdvpn.de",
+    "https://vid.priv.au",
+    "https://invidious.projectsegfau.lt",
+  ];
+  const targetHeight = parseTargetHeight(quality);
+
+  for (const host of instances) {
+    try {
+      const res = await fetch(`${host}/api/v1/videos/${videoId}`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+
+      if (type === "video") {
+        const formatStreams: any[] = data.formatStreams || [];
+        if (formatStreams.length === 0) continue;
+
+        const sorted = [...formatStreams].sort((a, b) => {
+          const ah = parseInt(String(a.size || a.qualityLabel || a.quality).replace(/[^0-9]/g, "") || "360", 10);
+          const bh = parseInt(String(b.size || b.qualityLabel || b.quality).replace(/[^0-9]/g, "") || "360", 10);
+          return Math.abs(ah - targetHeight) - Math.abs(bh - targetHeight);
+        });
+
+        const chosen = sorted[0];
+        if (!chosen?.url) continue;
+
+        const streamRes = await fetch(chosen.url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        });
+        if (!streamRes.ok || !streamRes.body) continue;
+
+        return {
+          stream: streamRes.body as ReadableStream<Uint8Array>,
+          mimeType: chosen.type?.split(";")[0] || "video/mp4",
+          contentLength: Number(streamRes.headers.get("content-length") || chosen.contentLength || 0),
+          extension: "mp4",
+        };
+      } else {
+        const adaptive: any[] = data.adaptiveFormats || [];
+        const audioFormats = adaptive.filter((f) => f.type?.includes("audio") || f.audioQuality);
+        const chosen = audioFormats.find((f) => f.type?.includes("mp4") || f.type?.includes("m4a")) || audioFormats[0];
+        if (!chosen?.url) continue;
+
+        const streamRes = await fetch(chosen.url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        });
+        if (!streamRes.ok || !streamRes.body) continue;
+
+        return {
+          stream: streamRes.body as ReadableStream<Uint8Array>,
+          mimeType: chosen.type?.split(";")[0] || "audio/mp4",
+          contentLength: Number(streamRes.headers.get("content-length") || chosen.contentLength || 0),
+          extension: chosen.type?.includes("mp4") ? "m4a" : "mp3",
+        };
+      }
+    } catch {
+      // try next instance
+    }
+  }
+  return null;
+}
+
+/**
  * Resilient fallback stream extractor for videos or audio using Innertube.
  * Prioritizes TV_EMBEDDED, TV, WEB_EMBEDDED, and mobile personas with dynamic PO tokens,
  * bypassing YouTube BotGuard login checks with zero 500 crashes on Vercel.
@@ -716,14 +794,14 @@ async function getWorkingYouTubeStream(
   quality: string | null
 ): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string; contentLength: number; extension?: string }> {
   // TV_EMBEDDED and TV clients do not enforce BotGuard/PO Token challenges on datacenter IPs
-  const clientsToTry = [
-    ClientType.TV_EMBEDDED,
-    ClientType.TV,
-    ClientType.WEB_EMBEDDED,
-    ClientType.ANDROID,
-    ClientType.IOS,
-    ClientType.MWEB,
-    ClientType.WEB,
+  const clientsToTry: { sessionType: any; clientName: "TV_EMBEDDED" | "TV" | "WEB_EMBEDDED" | "ANDROID" | "IOS" | "MWEB" | "WEB" }[] = [
+    { sessionType: ClientType.TV_EMBEDDED, clientName: "TV_EMBEDDED" },
+    { sessionType: ClientType.TV, clientName: "TV" },
+    { sessionType: ClientType.WEB_EMBEDDED, clientName: "WEB_EMBEDDED" },
+    { sessionType: ClientType.ANDROID, clientName: "ANDROID" },
+    { sessionType: ClientType.IOS, clientName: "IOS" },
+    { sessionType: ClientType.MWEB, clientName: "MWEB" },
+    { sessionType: ClientType.WEB, clientName: "WEB" },
   ];
   const targetHeight = parseTargetHeight(quality);
   const pot = getPoTokenForVideo(videoId);
@@ -734,15 +812,15 @@ async function getWorkingYouTubeStream(
   ];
   let lastError: Error | null = null;
 
-  for (const clientType of clientsToTry) {
+  for (const cand of clientsToTry) {
     try {
-      const yt = await getInnertubeSession(clientType);
+      const yt = await getInnertubeSession(cand.sessionType);
       if (yt.session.player && pot) {
         yt.session.player.po_token = pot;
       }
 
       const info = await yt.getBasicInfo(videoId, {
-        client: clientType as any,
+        client: cand.clientName,
         po_token: pot,
       });
 
@@ -750,7 +828,7 @@ async function getWorkingYouTubeStream(
       const reason = (info as any).playability_status?.reason || "";
       const progCount = info.streaming_data?.formats?.length || 0;
       const adapCount = info.streaming_data?.adaptive_formats?.length || 0;
-      logs.push(`${clientType}: status=${status}${reason ? ` (${reason})` : ""}, prog=${progCount}, adap=${adapCount}`);
+      logs.push(`${cand.clientName}: status=${status}${reason ? ` (${reason})` : ""}, prog=${progCount}, adap=${adapCount}`);
 
       if (status === "LOGIN_REQUIRED" || !info.streaming_data) {
         continue;
@@ -780,7 +858,7 @@ async function getWorkingYouTubeStream(
         // If direct fetch didn't return, try yt.download with progressive itag
         for (const fmt of sortedProg) {
           try {
-            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "video+audio", po_token: pot } as any);
+            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "video+audio", po_token: pot, client: cand.clientName } as any);
             return {
               stream: rawStream,
               mimeType: "video/mp4",
@@ -788,7 +866,7 @@ async function getWorkingYouTubeStream(
               extension: "mp4",
             };
           } catch (e: any) {
-            logs.push(`${clientType} dl itag ${fmt.itag}: ${e.message}`);
+            logs.push(`${cand.clientName} dl itag ${fmt.itag}: ${e.message}`);
           }
         }
       } else {
@@ -815,7 +893,7 @@ async function getWorkingYouTubeStream(
         // 2. Try yt.download with adaptive audio itags
         for (const fmt of sortedAudio) {
           try {
-            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "audio", po_token: pot } as any);
+            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "audio", po_token: pot, client: cand.clientName } as any);
             const ext = fmt.mime_type?.includes("mp4") ? "m4a" : "mp3";
             return {
               stream: rawStream,
@@ -824,7 +902,7 @@ async function getWorkingYouTubeStream(
               extension: ext,
             };
           } catch (e: any) {
-            logs.push(`${clientType} dl audio ${fmt.itag}: ${e.message}`);
+            logs.push(`${cand.clientName} dl audio ${fmt.itag}: ${e.message}`);
           }
         }
 
@@ -843,13 +921,13 @@ async function getWorkingYouTubeStream(
         }
       }
     } catch (err: any) {
-      logs.push(`${clientType} failed: ${err.message}`);
-      console.warn(`[INNERTUBE CLIENT ${clientType} FAILED]:`, err);
+      logs.push(`${cand.clientName} failed: ${err.message}`);
+      console.warn(`[INNERTUBE CLIENT ${cand.clientName} FAILED]:`, err);
       lastError = err instanceof Error ? err : new Error(String(err));
     }
   }
 
-  // Fallback: If all Innertube clients fail or encounter bot protection, query Cobalt API
+  // Fallback 1: Query Cobalt API
   try {
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const cobaltStream = await fetchCobaltStream(videoUrl, type, quality);
@@ -858,6 +936,16 @@ async function getWorkingYouTubeStream(
     }
   } catch (cErr: any) {
     logs.push(`cobalt fallback failed: ${cErr?.message || cErr}`);
+  }
+
+  // Fallback 2: Query Invidious API
+  try {
+    const invidiousStream = await fetchInvidiousStream(videoId, type, quality);
+    if (invidiousStream) {
+      return invidiousStream;
+    }
+  } catch (iErr: any) {
+    logs.push(`invidious fallback failed: ${iErr?.message || iErr}`);
   }
 
   throw new Error(`No available stream found for video: ${videoId}. Diagnostics: [${logs.join(" | ")}]`);
