@@ -10,7 +10,11 @@ import fs from "fs";
 import crypto from "crypto";
 
 // Enable JavaScript deciphering evaluation globally for player n-sig & s-sig deobfuscation
-(Platform.shim as any).eval = async (data: any) => new Function(data.output)();
+(Platform.shim as any).eval = async (data: any, env: any = {}) => {
+  const keys = Object.keys(env);
+  const vals = Object.values(env);
+  return new Function(...keys, data.output)(...vals);
+};
 
 /**
  * In-memory cache implementation to avoid any filesystem writes.
@@ -43,10 +47,13 @@ function getInnertubeSession(clientType: string): Promise<Innertube> {
   const existing = innertubeSessions.get(clientType);
   if (existing) return existing;
 
+  const poToken = process.env.YT_PO_TOKEN || undefined;
+
   const sessionPromise = Innertube.create({
     client_type: clientType as any,
     cache: new MemoryCache(),
     generate_session_locally: true,
+    po_token: poToken,
   }).catch((err) => {
     innertubeSessions.delete(clientType);
     throw err;
@@ -549,14 +556,55 @@ async function getHighQualityYouTubeVideoStream(
 }
 
 /**
+ * Directly fetches format audio or video stream with accurate Content-Length and MIME type,
+ * bypassing Innertube's internal chunked download wrappers for maximum speed and serverless reliability.
+ */
+async function fetchFormatStream(
+  format: any,
+  player: any
+): Promise<{ stream: ReadableStream<Uint8Array>; contentLength: number; mimeType: string } | null> {
+  try {
+    const downloadUrl = format.url || (await format.decipher(player));
+    if (!downloadUrl) return null;
+
+    const response = await fetch(downloadUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        Accept: "*/*",
+      },
+    });
+
+    if (!response.ok || !response.body) {
+      return null;
+    }
+
+    const cLen = Number(response.headers.get("content-length") || format.content_length || 0);
+    const mime = format.mime_type?.split(";")[0] || (format.has_video ? "video/mp4" : "audio/mp4");
+
+    return {
+      stream: response.body as ReadableStream<Uint8Array>,
+      contentLength: cLen,
+      mimeType: mime,
+    };
+  } catch (err) {
+    console.warn(`[STREAM FETCH ERROR itag ${format?.itag}]:`, err);
+    return null;
+  }
+}
+
+/**
  * Resilient fallback stream extractor for videos or audio using Innertube.
+ * Prioritizes high-speed direct progressive MP4 (formats with both video and audio) and original adaptive audio,
+ * gracefully falling back across clients (Android, MWeb, iOS, Web) with zero 500 crashes on Vercel.
  */
 async function getWorkingYouTubeStream(
   videoId: string,
   type: "video" | "audio",
   quality: string | null
-): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string }> {
-  const clientsToTry = [ClientType.ANDROID, ClientType.MWEB, ClientType.IOS];
+): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string; contentLength: number; extension?: string }> {
+  const clientsToTry = [ClientType.ANDROID, ClientType.MWEB, ClientType.IOS, ClientType.WEB];
+  const targetHeight = parseTargetHeight(quality);
 
   let lastError: Error | null = null;
 
@@ -564,66 +612,91 @@ async function getWorkingYouTubeStream(
     try {
       const yt = await getInnertubeSession(clientType);
       const info = await yt.getBasicInfo(videoId);
-      const optionsList: Parameters<typeof yt.download>[1][] = [];
 
-      if (type === "audio") {
-        const origAudio = selectOriginalAudioFormat(info.streaming_data?.adaptive_formats || []);
-        if (origAudio && origAudio.itag) {
-          optionsList.push({ itag: origAudio.itag, type: "audio" });
-        }
-        optionsList.push({ type: "audio", quality: "best" });
-        optionsList.push({ type: "audio", format: "any" });
-        optionsList.push({ type: "video+audio", quality: "best", format: "any" });
-      } else {
-        const targetHeight = parseTargetHeight(quality);
-        const videoFormats = (info.streaming_data?.formats || []).filter((f) => f.has_video);
-        const matchingProg = videoFormats.find((f) => (f.height || 0) <= targetHeight) || videoFormats[0];
-        if (matchingProg && matchingProg.itag) {
-          optionsList.push({ itag: matchingProg.itag, type: "video+audio" });
-        }
-        optionsList.push({ type: "video+audio", quality: "best", format: "any" });
-        optionsList.push({ type: "video+audio", quality: "best" });
-        optionsList.push({ type: "video", quality: "best" });
-      }
+      const progFormats = (info.streaming_data?.formats || []).filter((f) => f.has_video && f.has_audio);
+      const adaptiveAudio = (info.streaming_data?.adaptive_formats || []).filter((f) => f.has_audio && !f.has_video);
 
-      for (const opts of optionsList) {
-        try {
-          const rawStream = await yt.download(videoId, opts);
-          const reader = rawStream.getReader();
-          const firstChunk = await reader.read();
+      if (type === "video") {
+        // Find progressive stream matching requested resolution or closest available
+        const sortedProg = [...progFormats].sort((a, b) => {
+          const aDist = Math.abs((a.height || 0) - targetHeight);
+          const bDist = Math.abs((b.height || 0) - targetHeight);
+          return aDist - bDist;
+        });
 
-          if (firstChunk.value && firstChunk.value.length > 0) {
-            const verifiedStream = new ReadableStream<Uint8Array>({
-              async start(controller) {
-                controller.enqueue(firstChunk.value);
-                try {
-                  for (;;) {
-                    const { done, value } = await reader.read();
-                    if (done) {
-                      controller.close();
-                      break;
-                    }
-                    controller.enqueue(value);
-                  }
-                } catch (err) {
-                  controller.error(err);
-                }
-              },
-              cancel() {
-                reader.cancel();
-              },
-            });
-
+        for (const fmt of sortedProg) {
+          const direct = await fetchFormatStream(fmt, yt.session.player);
+          if (direct) {
             return {
-              stream: verifiedStream,
-              mimeType: type === "audio" ? "audio/mp4" : "video/mp4",
+              ...direct,
+              extension: "mp4",
             };
           }
-        } catch {
-          // Continue to next options
+        }
+
+        // If direct fetch didn't return, try yt.download with progressive itag
+        for (const fmt of sortedProg) {
+          try {
+            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "video+audio" });
+            return {
+              stream: rawStream,
+              mimeType: "video/mp4",
+              contentLength: typeof fmt.content_length === "number" ? fmt.content_length : 0,
+              extension: "mp4",
+            };
+          } catch {}
+        }
+      } else {
+        // type === "audio"
+        // 1. Try adaptive audio formats (AAC itag 140 or Opus itag 251)
+        const sortedAudio = [...adaptiveAudio].sort((a, b) => {
+          const a140 = a.itag === 140 ? 1 : 0;
+          const b140 = b.itag === 140 ? 1 : 0;
+          if (b140 !== a140) return b140 - a140;
+          return (b.bitrate || 0) - (a.bitrate || 0);
+        });
+
+        for (const fmt of sortedAudio) {
+          const direct = await fetchFormatStream(fmt, yt.session.player);
+          if (direct) {
+            const ext = direct.mimeType.includes("mp4") ? "m4a" : "mp3";
+            return {
+              ...direct,
+              extension: ext,
+            };
+          }
+        }
+
+        // 2. Try yt.download with adaptive audio itags
+        for (const fmt of sortedAudio) {
+          try {
+            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "audio" });
+            const ext = fmt.mime_type?.includes("mp4") ? "m4a" : "mp3";
+            return {
+              stream: rawStream,
+              mimeType: fmt.mime_type?.split(";")[0] || "audio/mp4",
+              contentLength: typeof fmt.content_length === "number" ? fmt.content_length : 0,
+              extension: ext,
+            };
+          } catch {}
+        }
+
+        // 3. Fallback: if adaptive audio is blocked/unavailable on serverless IP,
+        // use progressive stream which contains the genuine synchronized AAC audio!
+        if (progFormats.length > 0) {
+          for (const fmt of progFormats) {
+            const direct = await fetchFormatStream(fmt, yt.session.player);
+            if (direct) {
+              return {
+                ...direct,
+                extension: "mp4",
+              };
+            }
+          }
         }
       }
     } catch (err) {
+      console.warn(`[INNERTUBE CLIENT ${clientType} FAILED]:`, err);
       lastError = err instanceof Error ? err : new Error(String(err));
     }
   }
@@ -745,31 +818,39 @@ export async function GET(req: NextRequest) {
               finalStream = await getHighQualityYouTubeVideoStream(videoId, quality, req.signal);
             } catch (hqErr) {
               console.warn("[INNERTUBE HQ MUX FALLBACK]", hqErr);
-              const { stream: fallbackStream } = await getWorkingYouTubeStream(videoId, "video", quality);
-              finalStream = fallbackStream;
+              const fallback = await getWorkingYouTubeStream(videoId, "video", quality);
+              finalStream = fallback.stream;
+              finalMimeType = fallback.mimeType;
+              if (fallback.contentLength) finalContentLength = fallback.contentLength;
+              if (fallback.extension) finalExtension = fallback.extension;
             }
           } else {
             // Direct progressive MP4 stream without external ffmpeg (essential for Vercel)
-            const { stream: fallbackStream } = await getWorkingYouTubeStream(videoId, "video", quality);
-            finalStream = fallbackStream;
+            const fallback = await getWorkingYouTubeStream(videoId, "video", quality);
+            finalStream = fallback.stream;
+            finalMimeType = fallback.mimeType;
+            if (fallback.contentLength) finalContentLength = fallback.contentLength;
+            if (fallback.extension) finalExtension = fallback.extension;
           }
         } else {
-          const { stream: rawAudioStream, mimeType: rawMime } = await getWorkingYouTubeStream(videoId, "audio", quality);
+          const fallback = await getWorkingYouTubeStream(videoId, "audio", quality);
+          if (fallback.contentLength) finalContentLength = fallback.contentLength;
+
           if (hasFfmpeg) {
             try {
-              finalStream = await convertAudioToMp3WebStream(rawAudioStream, req.signal);
+              finalStream = await convertAudioToMp3WebStream(fallback.stream, req.signal);
               finalExtension = "mp3";
               finalMimeType = "audio/mpeg";
             } catch {
-              finalExtension = rawMime.includes("mp4") ? "m4a" : "mp3";
-              finalMimeType = rawMime;
-              finalStream = rawAudioStream;
+              finalExtension = fallback.extension || (fallback.mimeType.includes("mp4") ? "m4a" : "mp3");
+              finalMimeType = fallback.mimeType;
+              finalStream = fallback.stream;
             }
           } else {
             // Direct pure audio stream without external FFmpeg (e.g. Vercel)
-            finalExtension = rawMime.includes("mp4") ? "m4a" : "mp3";
-            finalMimeType = rawMime;
-            finalStream = rawAudioStream;
+            finalExtension = fallback.extension || (fallback.mimeType.includes("mp4") ? "m4a" : "mp3");
+            finalMimeType = fallback.mimeType;
+            finalStream = fallback.stream;
           }
         }
       }
