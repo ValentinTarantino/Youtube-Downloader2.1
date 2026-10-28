@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Innertube, Platform, UniversalCache, ClientType } from "youtubei.js";
+import { Innertube, Platform, ClientType } from "youtubei.js";
 import contentDisposition from "content-disposition";
 import http from "http";
 import { spawn } from "child_process";
@@ -12,6 +12,30 @@ import crypto from "crypto";
 // Enable JavaScript deciphering evaluation globally for player n-sig & s-sig deobfuscation
 (Platform.shim as any).eval = async (data: any) => new Function(data.output)();
 
+/**
+ * In-memory cache implementation to avoid any filesystem writes.
+ * Fixes Vercel serverless read-only filesystem error: ENOENT: mkdir '/vercel'.
+ */
+class MemoryCache {
+  #store = new Map<string, ArrayBuffer>();
+
+  get cache_dir(): string {
+    return os.tmpdir();
+  }
+
+  async get(key: string): Promise<ArrayBuffer | undefined> {
+    return this.#store.get(key);
+  }
+
+  async set(key: string, value: ArrayBuffer): Promise<void> {
+    this.#store.set(key, value);
+  }
+
+  async remove(key: string): Promise<void> {
+    this.#store.delete(key);
+  }
+}
+
 // Cache Innertube instances per client type for performance and session reuse
 const innertubeSessions = new Map<string, Promise<Innertube>>();
 
@@ -21,7 +45,7 @@ function getInnertubeSession(clientType: string): Promise<Innertube> {
 
   const sessionPromise = Innertube.create({
     client_type: clientType as any,
-    cache: new UniversalCache(true),
+    cache: new MemoryCache(),
     generate_session_locally: true,
   }).catch((err) => {
     innertubeSessions.delete(clientType);
@@ -30,6 +54,48 @@ function getInnertubeSession(clientType: string): Promise<Innertube> {
 
   innertubeSessions.set(clientType, sessionPromise);
   return sessionPromise;
+}
+
+let pythonAvailable: boolean | null = null;
+function checkPython(): Promise<boolean> {
+  if (pythonAvailable !== null) return Promise.resolve(pythonAvailable);
+  return new Promise((resolve) => {
+    try {
+      const p = spawn("python", ["--version"]);
+      p.on("error", () => {
+        pythonAvailable = false;
+        resolve(false);
+      });
+      p.on("close", (code) => {
+        pythonAvailable = code === 0;
+        resolve(pythonAvailable);
+      });
+    } catch {
+      pythonAvailable = false;
+      resolve(false);
+    }
+  });
+}
+
+let ffmpegAvailable: boolean | null = null;
+function checkFfmpeg(): Promise<boolean> {
+  if (ffmpegAvailable !== null) return Promise.resolve(ffmpegAvailable);
+  return new Promise((resolve) => {
+    try {
+      const p = spawn("ffmpeg", ["-version"]);
+      p.on("error", () => {
+        ffmpegAvailable = false;
+        resolve(false);
+      });
+      p.on("close", (code) => {
+        ffmpegAvailable = code === 0;
+        resolve(ffmpegAvailable);
+      });
+    } catch {
+      ffmpegAvailable = false;
+      resolve(false);
+    }
+  });
 }
 
 /**
@@ -568,45 +634,56 @@ async function getWorkingYouTubeStream(
 /**
  * Converts raw audio stream to standard MP3 using FFmpeg on-the-fly streaming pipeline.
  */
-function convertAudioToMp3WebStream(
+async function convertAudioToMp3WebStream(
   rawWebStream: ReadableStream<Uint8Array>,
   abortSignal?: AbortSignal
-): ReadableStream<Uint8Array> {
-  try {
-    const nodeReadable = Readable.fromWeb(rawWebStream as any);
-    const ffmpeg = spawn("ffmpeg", [
-      "-loglevel",
-      "error",
-      "-i",
-      "pipe:0",
-      "-vn",
-      "-b:a",
-      "192k",
-      "-f",
-      "mp3",
-      "pipe:1",
-    ]);
+): Promise<ReadableStream<Uint8Array>> {
+  const hasFfmpeg = await checkFfmpeg();
+  if (!hasFfmpeg) return rawWebStream;
 
-    const cleanup = () => {
-      try {
-        ffmpeg.kill();
-      } catch {}
-    };
+  return new Promise((resolve) => {
+    try {
+      const nodeReadable = Readable.fromWeb(rawWebStream as any);
+      const ffmpeg = spawn("ffmpeg", [
+        "-loglevel",
+        "error",
+        "-i",
+        "pipe:0",
+        "-vn",
+        "-b:a",
+        "192k",
+        "-f",
+        "mp3",
+        "pipe:1",
+      ]);
 
-    if (abortSignal) {
-      abortSignal.addEventListener("abort", cleanup, { once: true });
+      const cleanup = () => {
+        try {
+          ffmpeg.kill();
+        } catch {}
+      };
+
+      if (abortSignal) {
+        abortSignal.addEventListener("abort", cleanup, { once: true });
+      }
+
+      ffmpeg.on("error", (err) => {
+        console.warn("[FFMPEG NOT FOUND / ERROR, FALLBACK TO RAW AUDIO]:", err);
+        cleanup();
+        resolve(rawWebStream);
+      });
+
+      nodeReadable.pipe(ffmpeg.stdin);
+      nodeReadable.on("error", cleanup);
+      ffmpeg.stdin.on("error", () => {});
+      ffmpeg.on("close", cleanup);
+
+      resolve(Readable.toWeb(ffmpeg.stdout as any) as ReadableStream<Uint8Array>);
+    } catch (err) {
+      console.warn("[FFMPEG] Fallback to direct audio stream:", err);
+      resolve(rawWebStream);
     }
-
-    nodeReadable.pipe(ffmpeg.stdin);
-    nodeReadable.on("error", cleanup);
-    ffmpeg.stdin.on("error", () => {});
-    ffmpeg.on("close", cleanup);
-
-    return Readable.toWeb(ffmpeg.stdout as any) as ReadableStream<Uint8Array>;
-  } catch (err) {
-    console.warn("[FFMPEG] Fallback to direct audio stream:", err);
-    return rawWebStream;
-  }
+  });
 }
 
 export async function GET(req: NextRequest) {
@@ -638,37 +715,60 @@ export async function GET(req: NextRequest) {
       const videoId = extractYouTubeId(url);
       if (!videoId) throw new Error("Invalid YouTube link");
 
-      let finalStream: ReadableStream<Uint8Array>;
+      let finalStream: ReadableStream<Uint8Array> | null = null;
       let finalExtension = type === "audio" ? "mp3" : "mp4";
       let finalMimeType = type === "audio" ? "audio/mpeg" : "video/mp4";
       let finalContentLength: number | null = null;
 
-      // 1. Try primary yt-dlp high-speed engine (multi-fragment concurrent download, AV1/VP9 compression, perfect sync)
-      try {
-        const canonicalUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        const ytdlpResult = await downloadYouTubeToFile(canonicalUrl, type, quality, req.signal);
-        finalStream = ytdlpResult.stream;
-        finalExtension = ytdlpResult.extension;
-        finalMimeType = ytdlpResult.mimeType;
-        finalContentLength = ytdlpResult.contentLength;
-      } catch (ytdlpErr) {
-        console.warn("[YTDLP PRIMARY FAILED, FALLING BACK TO INNERTUBE]:", ytdlpErr);
+      // 1. Try primary yt-dlp high-speed engine if Python is available in environment
+      const hasPython = await checkPython();
+      if (hasPython) {
+        try {
+          const canonicalUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          const ytdlpResult = await downloadYouTubeToFile(canonicalUrl, type, quality, req.signal);
+          finalStream = ytdlpResult.stream;
+          finalExtension = ytdlpResult.extension;
+          finalMimeType = ytdlpResult.mimeType;
+          finalContentLength = ytdlpResult.contentLength;
+        } catch (ytdlpErr) {
+          console.warn("[YTDLP PRIMARY FAILED, FALLING BACK TO INNERTUBE]:", ytdlpErr);
+        }
+      }
+
+      // 2. Secondary fallback via Innertube (runs seamlessly in serverless environments like Vercel)
+      if (!finalStream) {
+        const hasFfmpeg = await checkFfmpeg();
 
         if (type === "video") {
-          try {
-            finalStream = await getHighQualityYouTubeVideoStream(videoId, quality, req.signal);
-          } catch (hqErr) {
-            console.warn("[INNERTUBE HQ MUX FALLBACK]", hqErr);
+          if (hasFfmpeg) {
+            try {
+              finalStream = await getHighQualityYouTubeVideoStream(videoId, quality, req.signal);
+            } catch (hqErr) {
+              console.warn("[INNERTUBE HQ MUX FALLBACK]", hqErr);
+              const { stream: fallbackStream } = await getWorkingYouTubeStream(videoId, "video", quality);
+              finalStream = fallbackStream;
+            }
+          } else {
+            // Direct progressive MP4 stream without external ffmpeg (essential for Vercel)
             const { stream: fallbackStream } = await getWorkingYouTubeStream(videoId, "video", quality);
             finalStream = fallbackStream;
           }
         } else {
-          const { stream: rawAudioStream } = await getWorkingYouTubeStream(videoId, "audio", quality);
-          try {
-            finalStream = convertAudioToMp3WebStream(rawAudioStream, req.signal);
-          } catch {
-            finalExtension = "m4a";
-            finalMimeType = "audio/mp4";
+          const { stream: rawAudioStream, mimeType: rawMime } = await getWorkingYouTubeStream(videoId, "audio", quality);
+          if (hasFfmpeg) {
+            try {
+              finalStream = await convertAudioToMp3WebStream(rawAudioStream, req.signal);
+              finalExtension = "mp3";
+              finalMimeType = "audio/mpeg";
+            } catch {
+              finalExtension = rawMime.includes("mp4") ? "m4a" : "mp3";
+              finalMimeType = rawMime;
+              finalStream = rawAudioStream;
+            }
+          } else {
+            // Direct pure audio stream without external FFmpeg (e.g. Vercel)
+            finalExtension = rawMime.includes("mp4") ? "m4a" : "mp3";
+            finalMimeType = rawMime;
             finalStream = rawAudioStream;
           }
         }
