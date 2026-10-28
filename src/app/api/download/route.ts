@@ -10,6 +10,14 @@ import os from "os";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import ffmpegPath from "ffmpeg-static";
+
+function getFfmpegBinary(): string {
+  if (ffmpegPath && typeof ffmpegPath === "string" && fs.existsSync(ffmpegPath)) {
+    return ffmpegPath;
+  }
+  return "ffmpeg";
+}
 
 // Proxy agent configuration for routing through residential / HTTP proxies
 const rawProxyUrl = process.env.YOUTUBE_PROXY || process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
@@ -162,9 +170,10 @@ function checkPython(): Promise<boolean> {
 let ffmpegAvailable: boolean | null = null;
 function checkFfmpeg(): Promise<boolean> {
   if (ffmpegAvailable !== null) return Promise.resolve(ffmpegAvailable);
+  const bin = getFfmpegBinary();
   return new Promise((resolve) => {
     try {
-      const p = spawn("ffmpeg", ["-version"]);
+      const p = spawn(bin, ["-version"]);
       p.on("error", () => {
         ffmpegAvailable = false;
         resolve(false);
@@ -198,7 +207,7 @@ function extractYouTubeId(url: string): string | null {
 function parseTargetHeight(quality: string | null): number {
   if (!quality) return 720;
   const num = parseInt(quality.replace(/[^0-9]/g, ""), 10);
-  return isNaN(num) || num <= 0 ? 720 : Math.min(num, 720);
+  return isNaN(num) || num <= 0 ? 720 : Math.min(num, 1080);
 }
 
 /**
@@ -450,7 +459,8 @@ function muxVideoAndAudioWithFFmpeg(
   aUrl: string,
   vLen: number,
   aLen: number,
-  abortSignal?: AbortSignal
+  abortSignal?: AbortSignal,
+  userAgent?: string
 ): Promise<ReadableStream<Uint8Array>> {
   return new Promise((resolve, reject) => {
     async function streamChunks(targetUrl: string, totalLen: number, chunkSize: number, res: http.ServerResponse) {
@@ -459,12 +469,15 @@ function muxVideoAndAudioWithFFmpeg(
         if (res.writableEnded || res.destroyed) break;
         const end = Math.min(start + chunkSize - 1, totalLen - 1);
         try {
-          const upstream = await fetch(targetUrl, {
-            headers: {
-              Range: `bytes=${start}-${end}`,
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            },
-          });
+          const headers: Record<string, string> = {
+            Range: `bytes=${start}-${end}`,
+            "User-Agent": userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            Accept: "*/*",
+          };
+          const cookie = formatCookieString(process.env.YT_COOKIES || process.env.YT_COOKIE);
+          if (cookie) headers["Cookie"] = cookie;
+
+          const upstream = await (proxyAgent ? customFetch(targetUrl, { headers }) : fetch(targetUrl, { headers }));
           if (!upstream.ok && upstream.status !== 206) break;
           if (upstream.body) {
             const reader = upstream.body.getReader();
@@ -510,7 +523,7 @@ function muxVideoAndAudioWithFFmpeg(
         return reject(new Error("Failed to allocate local bridge port"));
       }
 
-      const ffmpeg = spawn("ffmpeg", [
+      const ffmpeg = spawn(getFfmpegBinary(), [
         "-loglevel",
         "error",
         "-i",
@@ -566,9 +579,9 @@ async function getHighQualityYouTubeVideoStream(
 ): Promise<ReadableStream<Uint8Array>> {
   const targetHeight = parseTargetHeight(quality);
   const clients = [
+    ClientType.MWEB,
     ClientType.MUSIC,
     ClientType.ANDROID,
-    ClientType.MWEB,
     ClientType.IOS,
     ClientType.WEB,
   ];
@@ -589,7 +602,7 @@ async function getHighQualityYouTubeVideoStream(
         ...(info.streaming_data?.formats || []),
         ...(info.streaming_data?.adaptive_formats || []),
       ]
-        .filter((f) => f.has_video)
+        .filter((f) => f.has_video && (f.url || f.cipher || f.signature_cipher))
         .sort((a, b) => {
           const hDiff = (b.height || 0) - (a.height || 0);
           if (hDiff !== 0) return hDiff;
@@ -604,24 +617,37 @@ async function getHighQualityYouTubeVideoStream(
       const matchingVideo =
         allVideoFormats.find((f) => (f.height || 0) <= targetHeight) || allVideoFormats[0];
 
-      // If format already has audio (e.g. progressive stream 18 or 22), stream directly
-      if (matchingVideo.has_audio) {
-        const stream = await yt.download(videoId, {
-          itag: matchingVideo.itag,
-          type: "video+audio",
-          po_token: pot,
-        } as any);
-        return stream;
+      // If format already has audio (e.g. progressive stream 18 or 22) and matches target height, stream directly
+      if (matchingVideo.has_audio && (matchingVideo.height || 0) === targetHeight) {
+        const direct = await fetchFormatStream(
+          matchingVideo,
+          yt.session.player,
+          pot,
+          yt.session.context.client.userAgent
+        );
+        if (direct) return direct.stream;
       }
 
-      // Format is video-only -> select the original creator audio track
-      const matchingAudio = selectOriginalAudioFormat(info.streaming_data?.adaptive_formats || []);
+      // Format is video-only or needs original audio track
+      const validAudio = (info.streaming_data?.adaptive_formats || []).filter(
+        (f) => f.has_audio && !f.has_video && (f.url || f.cipher || f.signature_cipher)
+      );
+      const matchingAudio = selectOriginalAudioFormat(validAudio) || validAudio[0];
       if (!matchingAudio) continue;
 
-      const vUrl = await matchingVideo.decipher(yt.session.player);
-      const aUrl = await matchingAudio.decipher(yt.session.player);
+      let vUrl = matchingVideo.url || (await matchingVideo.decipher(yt.session.player));
+      let aUrl = matchingAudio.url || (await matchingAudio.decipher(yt.session.player));
 
       if (!vUrl || !aUrl) continue;
+
+      if (pot && !vUrl.includes("pot=")) {
+        const sep = vUrl.includes("?") ? "&" : "?";
+        vUrl = `${vUrl}${sep}pot=${encodeURIComponent(pot)}`;
+      }
+      if (pot && !aUrl.includes("pot=")) {
+        const sep = aUrl.includes("?") ? "&" : "?";
+        aUrl = `${aUrl}${sep}pot=${encodeURIComponent(pot)}`;
+      }
 
       const vLen =
         typeof matchingVideo.content_length === "number"
@@ -633,7 +659,14 @@ async function getHighQualityYouTubeVideoStream(
           ? matchingAudio.content_length
           : parseInt((matchingAudio.content_length as any) || "0", 10) || 30 * 1024 * 1024;
 
-      return await muxVideoAndAudioWithFFmpeg(vUrl, aUrl, vLen, aLen, abortSignal);
+      return await muxVideoAndAudioWithFFmpeg(
+        vUrl,
+        aUrl,
+        vLen,
+        aLen,
+        abortSignal,
+        yt.session.context.client.userAgent
+      );
     } catch (err) {
       lastErr = err instanceof Error ? err : new Error(String(err));
     }
@@ -649,10 +682,14 @@ async function getHighQualityYouTubeVideoStream(
 async function fetchFormatStream(
   format: any,
   player: any,
-  pot?: string
+  pot?: string,
+  clientUserAgent?: string
 ): Promise<{ stream: ReadableStream<Uint8Array>; contentLength: number; mimeType: string } | null> {
   try {
-    let downloadUrl = format.url || (await format.decipher(player));
+    let downloadUrl = format.url;
+    if (!downloadUrl && (format.cipher || format.signature_cipher)) {
+      downloadUrl = await format.decipher(player);
+    }
     if (!downloadUrl) return null;
 
     if (pot && !downloadUrl.includes("pot=")) {
@@ -662,11 +699,10 @@ async function fetchFormatStream(
 
     const headers: Record<string, string> = {
       "User-Agent":
+        clientUserAgent ||
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
       Accept: "*/*",
       "Accept-Encoding": "identity",
-      Origin: "https://www.youtube.com",
-      Referer: "https://www.youtube.com/",
     };
 
     const cookie = formatCookieString(process.env.YT_COOKIES || process.env.YT_COOKIE);
@@ -846,9 +882,9 @@ async function getWorkingYouTubeStream(
   quality: string | null
 ): Promise<{ stream: ReadableStream<Uint8Array>; mimeType: string; contentLength: number; extension?: string }> {
   const clientsToTry = [
+    ClientType.MWEB,
     ClientType.MUSIC,
     ClientType.ANDROID,
-    ClientType.MWEB,
     ClientType.IOS,
     ClientType.WEB,
   ];
@@ -894,7 +930,7 @@ async function getWorkingYouTubeStream(
         });
 
         for (const fmt of sortedProg) {
-          const direct = await fetchFormatStream(fmt, yt.session.player, pot);
+          const direct = await fetchFormatStream(fmt, yt.session.player, pot, yt.session.context.client.userAgent);
           if (direct) {
             return {
               ...direct,
@@ -902,25 +938,11 @@ async function getWorkingYouTubeStream(
             };
           }
         }
-
-        // If direct fetch didn't return, try yt.download with progressive itag
-        for (const fmt of sortedProg) {
-          try {
-            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "video+audio", po_token: pot } as any);
-            return {
-              stream: rawStream,
-              mimeType: "video/mp4",
-              contentLength: typeof fmt.content_length === "number" ? fmt.content_length : 0,
-              extension: "mp4",
-            };
-          } catch (e: any) {
-            logs.push(`${clientType} dl itag ${fmt.itag}: ${e.message}`);
-          }
-        }
       } else {
         // type === "audio"
-        // 1. Try adaptive audio formats (AAC itag 140 or Opus itag 251)
-        const sortedAudio = [...adaptiveAudio].sort((a, b) => {
+        // 1. Try adaptive audio formats (AAC itag 140 or Opus itag 251) with decipherable URLs
+        const validAudio = adaptiveAudio.filter((f) => f.url || f.cipher || f.signature_cipher);
+        const sortedAudio = [...validAudio].sort((a, b) => {
           const a140 = a.itag === 140 ? 1 : 0;
           const b140 = b.itag === 140 ? 1 : 0;
           if (b140 !== a140) return b140 - a140;
@@ -928,7 +950,7 @@ async function getWorkingYouTubeStream(
         });
 
         for (const fmt of sortedAudio) {
-          const direct = await fetchFormatStream(fmt, yt.session.player, pot);
+          const direct = await fetchFormatStream(fmt, yt.session.player, pot, yt.session.context.client.userAgent);
           if (direct) {
             const ext = direct.mimeType.includes("mp4") ? "m4a" : "mp3";
             return {
@@ -938,33 +960,14 @@ async function getWorkingYouTubeStream(
           }
         }
 
-        // 2. Try yt.download with adaptive audio itags
-        for (const fmt of sortedAudio) {
-          try {
-            const rawStream = await yt.download(videoId, { itag: fmt.itag, type: "audio", po_token: pot } as any);
-            const ext = fmt.mime_type?.includes("mp4") ? "m4a" : "mp3";
+        // 2. Fallback: progressive streams contain the clean original audio track
+        for (const fmt of progFormats) {
+          const direct = await fetchFormatStream(fmt, yt.session.player, pot, yt.session.context.client.userAgent);
+          if (direct) {
             return {
-              stream: rawStream,
-              mimeType: fmt.mime_type?.split(";")[0] || "audio/mp4",
-              contentLength: typeof fmt.content_length === "number" ? fmt.content_length : 0,
-              extension: ext,
+              ...direct,
+              extension: "mp4",
             };
-          } catch (e: any) {
-            logs.push(`${clientType} dl audio ${fmt.itag}: ${e.message}`);
-          }
-        }
-
-        // 3. Fallback: if adaptive audio is blocked/unavailable on serverless IP,
-        // use progressive stream which contains the genuine synchronized AAC audio!
-        if (progFormats.length > 0) {
-          for (const fmt of progFormats) {
-            const direct = await fetchFormatStream(fmt, yt.session.player, pot);
-            if (direct) {
-              return {
-                ...direct,
-                extension: "mp4",
-              };
-            }
           }
         }
       }
@@ -1012,7 +1015,7 @@ async function convertAudioToMp3WebStream(
   return new Promise((resolve) => {
     try {
       const nodeReadable = Readable.fromWeb(rawWebStream as any);
-      const ffmpeg = spawn("ffmpeg", [
+      const ffmpeg = spawn(getFfmpegBinary(), [
         "-loglevel",
         "error",
         "-i",
