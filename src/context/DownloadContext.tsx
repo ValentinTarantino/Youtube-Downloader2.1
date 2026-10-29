@@ -31,10 +31,10 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
     confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ["#8B5CF6", "#3B82F6", "#10B981"] });
   };
 
-  const triggerDownload = (url: string) => {
+  const triggerDownload = (url: string, filename = "") => {
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", "");
+    link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -56,16 +56,19 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
     try {
       if (metadata.platform === "youtube") {
         const tunnelUrl = `/api/download?url=${encodeURIComponent(url)}&type=${type}&quality=${_quality || "720"}&filename=${encodeURIComponent(metadata.title)}`;
-        triggerDownload(tunnelUrl);
-
-        setTimeout(() => {
-          updateTask(id, { progress: 65, status: "Downloading..." });
-        }, 1200);
-
-        setTimeout(() => {
-          updateTask(id, { progress: 100, status: "Ready", downloadUrl: tunnelUrl });
-          triggerConfetti();
-        }, 3000);
+        const response = await fetch(tunnelUrl);
+        if (!response.ok) {
+          const detail = await response.json().catch(() => null);
+          throw new Error(detail?.error || `Download failed: HTTP ${response.status}`);
+        }
+        updateTask(id, { progress: 65, status: "Downloading..." });
+        const blob = await response.blob();
+        if (!blob.size) throw new Error("The server returned an empty file");
+        const objectUrl = URL.createObjectURL(blob);
+        triggerDownload(objectUrl, `${metadata.title.replace(/[<>:"/\\|?*]/g, "_")}.${type === "audio" ? "mp3" : "mp4"}`);
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+        updateTask(id, { progress: 100, status: "Ready", downloadUrl: tunnelUrl });
+        triggerConfetti();
         return;
       }
 

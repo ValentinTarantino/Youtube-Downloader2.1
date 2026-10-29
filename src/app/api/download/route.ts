@@ -2,18 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { Innertube, Platform, ClientType } from "youtubei.js";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 import contentDisposition from "content-disposition";
-import http from "http";
+
 import { spawn } from "child_process";
-import { Readable } from "stream";
+import { Readable, PassThrough, pipeline } from "stream";
 import os from "os";
-import path from "path";
 import fs from "fs";
 import ffmpegPath from "ffmpeg-static";
+import { firstFormatUrl } from "@/lib/format-url";
+import { runInNewContext } from "node:vm";
+import { downloadYouTubeVideo } from "@/lib/youtube-video";
+import { timingSafeEqual } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 function getFfmpegBinary(): string {
+  if (process.env.FFMPEG_BINARY) return process.env.FFMPEG_BINARY;
   if (ffmpegPath && typeof ffmpegPath === "string" && fs.existsSync(ffmpegPath)) {
     try {
       fs.chmodSync(ffmpegPath, 0o755);
@@ -47,9 +51,7 @@ function checkFfmpeg(): Promise<boolean> {
 
 // Global JavaScript deciphering evaluator for player n-sig & s-sig deobfuscation
 (Platform.shim as any).eval = async (data: any, env: any = {}) => {
-  const keys = Object.keys(env);
-  const vals = Object.values(env);
-  return new Function(...keys, data.output)(...vals);
+  return runInNewContext(`(function(){${data.output}\n})()`, { ...env }, { timeout: 5000 });
 };
 
 // Safe proxy agent (only used if explicitly provided via environment)
@@ -78,12 +80,6 @@ const customFetch: typeof fetch = (input: any, init?: any) => {
       : input && typeof input === "object" && "url" in input
       ? input.url
       : String(input);
-
-  // CRITICAL: googlevideo.com CDN streams must NEVER be routed through proxies.
-  // Google Video CDN does not block datacenters or bots, and proxying media chunks causes 403 Forbidden.
-  if (url.includes("googlevideo.com")) {
-    return fetch(input, init);
-  }
 
   if (optionalProxyAgent) {
     const method = (init?.method || (input && input.method) || "GET").toUpperCase();
@@ -147,6 +143,7 @@ interface CachedInfo {
   clientType: string;
   yt: Innertube;
   expiresAt: number;
+  media?: { video: string; audio: string };
 }
 const infoCache = new Map<string, CachedInfo>();
 
@@ -173,9 +170,10 @@ const CLIENT_LADDER = [
   ClientType.MWEB,          // Mobile web persona
 ];
 
-async function resolveVideoInfo(videoId: string): Promise<{ info: any; clientType: string; yt: Innertube }> {
-  const cached = infoCache.get(videoId);
-  if (cached && cached.expiresAt > Date.now()) {
+async function resolveVideoInfo(videoId: string, targetHeight?: number): Promise<{ info: any; clientType: string; yt: Innertube; media?: { video: string; audio: string } }> {
+  const cacheKey = `${videoId}:${targetHeight ?? "audio"}`;
+  const cached = infoCache.get(cacheKey);
+  if (targetHeight === undefined && cached && cached.expiresAt > Date.now()) {
     return { info: cached.data, clientType: cached.clientType, yt: cached.yt };
   }
 
@@ -193,14 +191,44 @@ async function resolveVideoInfo(videoId: string): Promise<{ info: any; clientTyp
         ].some((f: any) => f.url || f.signature_cipher || f.cipher);
 
         if (hasUsable) {
+          let media: { video: string; audio: string } | undefined;
+          if (targetHeight !== undefined) {
+            const formats = [
+              ...(info.streaming_data.formats || []),
+              ...(info.streaming_data.adaptive_formats || []),
+            ];
+            const decipher = (format: any): Promise<string> => format.decipher(yt.session.player);
+            const usable = async (url: string) => {
+              const response = await customFetch(url, { signal: AbortSignal.timeout(15000) });
+              const ok = response.ok && Boolean(response.body);
+              await response.body?.cancel();
+              if (!ok) errors.push(`${client}: CDN HTTP ${response.status}`);
+              return ok;
+            };
+            const videoUrl = await firstFormatUrl(
+              formats.filter((f: any) => f.has_video && f.height === targetHeight), decipher, usable,
+            );
+            const audioUrl = await firstFormatUrl(
+              formats.filter((f: any) => f.has_audio), decipher, usable,
+            );
+            if (!videoUrl || !audioUrl) {
+              const heights = [...new Set(formats
+                .filter((f: any) => f.has_video && (f.url || f.cipher || f.signature_cipher))
+                .map((f: any) => f.height))].join(",");
+              errors.push(`${client}: requested=${targetHeight}p, listed heights=[${heights}], video=${Boolean(videoUrl)}, audio=${Boolean(audioUrl)}`);
+              continue;
+            }
+            media = { video: videoUrl, audio: audioUrl };
+          }
           const entry: CachedInfo = {
             data: info,
             clientType: client,
             yt,
             expiresAt: Date.now() + 10 * 60 * 1000,
+            media,
           };
-          infoCache.set(videoId, entry);
-          return { info, clientType: client, yt };
+          infoCache.set(cacheKey, entry);
+          return { info, clientType: client, yt, media };
         }
       }
       errors.push(`${client}:${status}`);
@@ -213,16 +241,23 @@ async function resolveVideoInfo(videoId: string): Promise<{ info: any; clientTyp
 }
 
 /**
- * Extracts pure MP3 audio from a stream using FFmpeg without hitting 403 or memory limits.
+ * Downloads through the shared transport and converts the input to MP3.
  */
-function extractAudioWithFFmpeg(
+async function extractAudioWithFFmpeg(
   streamUrl: string,
   abortSignal?: AbortSignal
-): ReadableStream<Uint8Array> {
+): Promise<ReadableStream<Uint8Array>> {
+  const upstream = await customFetch(streamUrl, { signal: abortSignal });
+  if (!upstream.ok || !upstream.body) {
+    await upstream.body?.cancel();
+    throw new Error(`Audio CDN download failed: HTTP ${upstream.status}`);
+  }
+  const input = Readable.fromWeb(upstream.body as any);
+  const output = new PassThrough();
   const bin = getFfmpegBinary();
   const ffmpeg = spawn(bin, [
     "-loglevel", "error",
-    "-i", streamUrl,
+    "-i", "pipe:0",
     "-vn",
     "-c:a", "libmp3lame",
     "-b:a", "192k",
@@ -230,182 +265,39 @@ function extractAudioWithFFmpeg(
     "pipe:1",
   ]);
 
-  const cleanup = () => {
-    try {
-      ffmpeg.kill();
-    } catch {}
-  };
-
-  if (abortSignal) {
-    abortSignal.addEventListener("abort", cleanup, { once: true });
-  }
-
-  ffmpeg.on("close", cleanup);
-  ffmpeg.on("error", cleanup);
-
-  return Readable.toWeb(ffmpeg.stdout as any) as ReadableStream<Uint8Array>;
-}
-
-/**
- * Pipes separate high-res video and audio streams using local bridge server & FFmpeg without re-encoding.
- */
-function muxVideoAndAudioWithFFmpeg(
-  vUrl: string,
-  aUrl: string,
-  abortSignal?: AbortSignal,
-  userAgent?: string
-): Promise<ReadableStream<Uint8Array>> {
-  return new Promise((resolve, reject) => {
-    async function pipeStreamToRes(targetUrl: string, res: http.ServerResponse) {
-      try {
-        const headers: Record<string, string> = {
-          "User-Agent": userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          Accept: "*/*",
-        };
-
-        const upstream = await fetch(targetUrl, { headers });
-        if (!upstream.ok || !upstream.body) {
-          if (!res.writableEnded) res.end();
-          return;
-        }
-
-        const reader = upstream.body.getReader();
-        while (true) {
-          if (res.writableEnded || res.destroyed) break;
-          const { done, value } = await reader.read();
-          if (done) break;
-          const ok = res.write(Buffer.from(value));
-          if (!ok) await new Promise((r) => res.once("drain", r));
-        }
-      } catch {
-      } finally {
-        if (!res.writableEnded) res.end();
-      }
-    }
-
-    const server = http.createServer((req, res) => {
-      if (req.url === "/video") {
-        res.writeHead(200, {
-          "Content-Type": "video/mp4",
-          "Transfer-Encoding": "chunked",
-        });
-        pipeStreamToRes(vUrl, res);
-      } else if (req.url === "/audio") {
-        res.writeHead(200, {
-          "Content-Type": "audio/mp4",
-          "Transfer-Encoding": "chunked",
-        });
-        pipeStreamToRes(aUrl, res);
-      } else {
-        res.writeHead(404);
-        res.end();
-      }
-    });
-
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address ? address.port : 0;
-      if (!port) {
-        server.close();
-        return reject(new Error("Failed to allocate local bridge port"));
-      }
-
-      const ffmpeg = spawn(getFfmpegBinary(), [
-        "-loglevel",
-        "error",
-        "-i",
-        `http://127.0.0.1:${port}/video`,
-        "-i",
-        `http://127.0.0.1:${port}/audio`,
-        "-c:v",
-        "copy",
-        "-c:a",
-        "aac",
-        "-movflags",
-        "frag_keyframe+empty_moov+default_base_moof",
-        "-f",
-        "mp4",
-        "pipe:1",
-      ]);
-
-      const cleanup = () => {
-        try {
-          ffmpeg.kill();
-        } catch {}
-        try {
-          server.close();
-        } catch {}
-      };
-
-      if (abortSignal) {
-        abortSignal.addEventListener("abort", cleanup, { once: true });
-      }
-
-      ffmpeg.on("error", (err) => {
-        cleanup();
-        reject(err);
-      });
-
-      ffmpeg.on("close", () => {
-        cleanup();
-      });
-
-      const webStream = Readable.toWeb(ffmpeg.stdout as any) as ReadableStream<Uint8Array>;
-      resolve(webStream);
-    });
+  const abort = () => output.destroy(new Error("Audio download aborted"));
+  output.on("close", () => {
+    input.destroy();
+    ffmpeg.kill();
+    abortSignal?.removeEventListener("abort", abort);
   });
-}
-
-/**
- * Tunnels media stream directly from upstream CDN to client with Range and Abort support.
- */
-async function tunnelStream(
-  downloadUrl: string,
-  filenameWithExt: string,
-  mimeType: string,
-  req: NextRequest
-): Promise<NextResponse> {
-  const reqRange = req.headers.get("range");
-  const upstreamHeaders: Record<string, string> = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-    Accept: "*/*",
-  };
-  if (reqRange) {
-    upstreamHeaders["Range"] = reqRange;
-  }
-
-  const upstream = await fetch(downloadUrl, {
-    headers: upstreamHeaders,
-    signal: req.signal,
+  ffmpeg.stderr.resume();
+  ffmpeg.on("error", (error) => output.destroy(error));
+  ffmpeg.stdout.on("error", (error) => output.destroy(error));
+  ffmpeg.stdout.pipe(output, { end: false });
+  pipeline(input, ffmpeg.stdin, (error) => {
+    if (error) output.destroy(error);
   });
-
-  if (!upstream.ok && upstream.status !== 206) {
-    throw new Error(`Upstream CDN error: ${upstream.status}`);
-  }
-  if (!upstream.body) {
-    throw new Error("Empty body from upstream CDN");
-  }
-
-  const responseHeaders: Record<string, string> = {
-    "Content-Type": mimeType,
-    "Content-Disposition": contentDisposition(filenameWithExt),
-    "Accept-Ranges": "bytes",
-    "Cache-Control": "no-cache",
-  };
-
-  const cLen = upstream.headers.get("content-length");
-  if (cLen) responseHeaders["Content-Length"] = cLen;
-
-  const cRange = upstream.headers.get("content-range");
-  if (cRange) responseHeaders["Content-Range"] = cRange;
-
-  return new NextResponse(upstream.body, {
-    status: upstream.status === 206 ? 206 : 200,
-    headers: responseHeaders,
+  ffmpeg.on("close", (code) => {
+    if (code === 0) output.end();
+    else output.destroy(new Error(`MP3 conversion failed: FFmpeg exit ${code}`));
   });
+  const result = Readable.toWeb(output) as ReadableStream<Uint8Array>;
+  abortSignal?.addEventListener("abort", abort, { once: true });
+  if (abortSignal?.aborted) abort();
+  return result;
 }
 
 export async function GET(req: NextRequest) {
+  if (process.env.DOWNLOAD_BACKEND_MODE === "true") {
+    const expected = process.env.DOWNLOAD_BACKEND_TOKEN;
+    if (!expected) return NextResponse.json({ error: "Backend authentication is not configured" }, { status: 503 });
+    const actual = Buffer.from(req.headers.get("authorization") || "");
+    const required = Buffer.from(`Bearer ${expected}`);
+    if (actual.length !== required.length || !timingSafeEqual(actual, required)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
   const url = req.nextUrl.searchParams.get("url");
   const type = (req.nextUrl.searchParams.get("type") || "video") as "video" | "audio";
   const quality = req.nextUrl.searchParams.get("quality");
@@ -422,6 +314,13 @@ export async function GET(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid download URL" }, { status: 400 });
   }
+  if (process.env.DOWNLOAD_BACKEND_MODE === "true") {
+    const host = parsedUrl.hostname.toLowerCase();
+    if (!["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"].includes(host)) {
+      return NextResponse.json({ error: "This backend accepts YouTube URLs only" }, { status: 400 });
+    }
+  }
+  if (!["video", "audio"].includes(type)) return NextResponse.json({ error: "Invalid download type" }, { status: 400 });
 
   const cleanFilename = rawFilename
     .replace(/[^a-zA-Z0-9\s\-_.()]/g, "_")
@@ -434,7 +333,22 @@ export async function GET(req: NextRequest) {
       const videoId = extractYouTubeId(url);
       if (!videoId) throw new Error("Invalid YouTube link");
 
-      const { info, yt } = await resolveVideoInfo(videoId);
+      if (type === "video") {
+        const result = await downloadYouTubeVideo(videoId, parseTargetHeight(quality), getFfmpegBinary(), req.signal);
+        return new NextResponse(result.body, {
+          headers: {
+            "Content-Type": "video/mp4",
+            "Content-Disposition": contentDisposition(`${cleanFilename}.mp4`),
+            "Content-Length": String(result.size),
+            "X-Video-Height": String(result.height),
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+
+      const { info, yt } = await resolveVideoInfo(
+        videoId,
+      );
       const streamingData = info.streaming_data;
       const progFormats: any[] = streamingData?.formats || [];
       const adaptiveFormats: any[] = streamingData?.adaptive_formats || [];
@@ -443,12 +357,10 @@ export async function GET(req: NextRequest) {
       if (type === "audio") {
         // Priority 1: Unthrottled progressive itag 18 stream
         let audioSourceUrl: string | undefined;
-        let isProgressive = false;
 
         const prog = progFormats.find((f) => f.has_audio && f.url) || progFormats[0];
         if (prog?.url) {
           audioSourceUrl = prog.url;
-          isProgressive = true;
         }
 
         // Priority 2: Adaptive audio formats (itag 140 / 251)
@@ -473,9 +385,8 @@ export async function GET(req: NextRequest) {
         }
 
         const hasFfmpeg = await checkFfmpeg();
-        if (hasFfmpeg && isProgressive) {
-          try {
-            const mp3Stream = extractAudioWithFFmpeg(audioSourceUrl, req.signal);
+        if (hasFfmpeg) {
+            const mp3Stream = await extractAudioWithFFmpeg(audioSourceUrl, req.signal);
             return new NextResponse(mp3Stream, {
               headers: {
                 "Content-Disposition": contentDisposition(`${cleanFilename}.mp3`),
@@ -483,68 +394,11 @@ export async function GET(req: NextRequest) {
                 "Cache-Control": "no-cache",
               },
             });
-          } catch (ffErr) {
-            console.warn("[FFMPEG MP3 EXTRACTION FALLBACK TO DIRECT TUNNEL]:", ffErr);
-          }
         }
-
-        // Direct tunnel fallback (never fails, instant response)
-        const extension = isProgressive ? "m4a" : "mp3";
-        const mimeType = isProgressive ? "audio/mp4" : "audio/mpeg";
-        return await tunnelStream(audioSourceUrl, `${cleanFilename}.${extension}`, mimeType, req);
+        throw new Error("MP3 conversion requires FFmpeg on the download server");
       }
 
-      // --- VIDEO DOWNLOAD ---
-      const targetHeight = parseTargetHeight(quality);
-
-      // Best progressive format (guaranteed unthrottled, complete video + audio)
-      const prog = progFormats.find((f) => f.has_video && f.has_audio && f.url) || progFormats[0];
-      const progUrl = prog?.url || (await prog?.decipher(yt.session.player));
-
-      // If user requested 360p or default, stream progressive MP4 directly
-      if (targetHeight <= 360 && progUrl) {
-        return await tunnelStream(progUrl, `${cleanFilename}.mp4`, "video/mp4", req);
-      }
-
-      // High quality video (720p / 1080p): attempt muxing if FFmpeg is available
-      const hasFfmpeg = await checkFfmpeg();
-      if (hasFfmpeg && progUrl) {
-        const videoCandidates = adaptiveFormats
-          .filter((f) => f.has_video && (f.url || f.cipher || f.signature_cipher))
-          .sort((a, b) => {
-            const hDiff = (b.height || 0) - (a.height || 0);
-            if (hDiff !== 0) return hDiff;
-            return (b.bitrate || 0) - (a.bitrate || 0);
-          });
-
-        const matchingVideo =
-          videoCandidates.find((f) => (f.height || 0) <= targetHeight) || videoCandidates[0];
-
-        if (matchingVideo) {
-          try {
-            const vUrl = matchingVideo.url || (await matchingVideo.decipher(yt.session.player));
-            if (vUrl) {
-              const muxStream = await muxVideoAndAudioWithFFmpeg(vUrl, progUrl, req.signal);
-              return new NextResponse(muxStream, {
-                headers: {
-                  "Content-Disposition": contentDisposition(`${cleanFilename}.mp4`),
-                  "Content-Type": "video/mp4",
-                  "Cache-Control": "no-cache",
-                },
-              });
-            }
-          } catch (muxErr) {
-            console.warn("[FFMPEG MUX FAILED, FALLING BACK TO GUARANTEED PROGRESSIVE]:", muxErr);
-          }
-        }
-      }
-
-      // Guaranteed progressive fallback (never 0-byte, never fails)
-      if (progUrl) {
-        return await tunnelStream(progUrl, `${cleanFilename}.mp4`, "video/mp4", req);
-      }
-
-      throw new Error("No playable video formats available");
+      throw new Error("Unsupported download type");
     } catch (error) {
       console.error("[YOUTUBE DOWNLOAD ERROR]", error);
       return NextResponse.json(
