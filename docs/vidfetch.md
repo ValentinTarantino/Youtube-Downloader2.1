@@ -6,8 +6,13 @@ reads the ignored `.env.local` file. No API key is included in source control.
 
 The browser creates a job through `POST /api/jobs` and polls `GET /api/jobs`
 with a signed, expiring job ticket. Provider credentials stay on the server.
-The completed file is downloaded directly from the provider's HTTPS link.
-Vercel does not execute FFmpeg, run yt-dlp or relay media for this flow.
+The browser downloads through `/api/jobs?ticket=...&download=1`. That endpoint
+validates the ticket, retrieves the provider's HTTPS link and streams the bytes
+with `Content-Disposition: attachment`, preserving Content-Length and Range
+responses. It does not buffer the whole file or expose API credentials to storage.
+Vercel does not execute FFmpeg or yt-dlp, but now relays media: hosting transfer
+quotas and the route's 300-second maximum duration apply. Provider processing
+must finish before browser downloading begins.
 Render's existing `/api/download` bearer protection remains unchanged; the
 new frontend uses `/api/jobs` when the provider is configured.
 

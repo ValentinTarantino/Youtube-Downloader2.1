@@ -73,8 +73,9 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
             if (!status.ok) throw new Error(job.error || "No se pudo consultar la descarga.");
           }
           if (job.status !== "completed" || !job.downloadUrl) throw new Error(job.error || "El proveedor no pudo preparar el archivo.");
-          updateTask(id, { progress: 100, status: "Ready", downloadUrl: job.downloadUrl });
-          triggerDownload(job.downloadUrl);
+          const downloadUrl = `/api/jobs?ticket=${encodeURIComponent(ticket)}&download=1`;
+          updateTask(id, { progress: 100, status: "Ready", downloadUrl });
+          triggerDownload(downloadUrl, `${metadata.title}.${type === "audio" ? "mp3" : "mp4"}`);
           triggerConfetti();
           return;
         }

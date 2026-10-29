@@ -71,7 +71,7 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
           <span className={`text-[8px] md:text-[10px] font-bold uppercase tracking-widest ${
             isDone ? "text-emerald-400" : isError ? "text-red-400" : "text-white/40"
           }`}>
-            {isDone ? "Completed" : isError ? "Error" : `${task.status} ${task.progress}%`}
+            {isDone ? "Listo para descargar" : isError ? "Error" : `${task.status} ${task.progress}%`}
           </span>
         </div>
 

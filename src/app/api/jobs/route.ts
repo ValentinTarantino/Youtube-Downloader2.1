@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import contentDisposition from "content-disposition";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 const API = "https://api.vidfetch.dev/v1/downloads";
 const formats = new Set(["360p", "480p", "720p", "mp3"]);
 function sign(id: string, expiry: number, key: string) {
@@ -67,7 +68,43 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Trabajo inválido." }, { status: 403 });
   }
   try {
-    return NextResponse.json(safeJob(await call(key, id)), { headers: { "Cache-Control": "no-store" } });
+    const job = await call(key, id);
+    const result = safeJob(job);
+    if (req.nextUrl.searchParams.get("download") === "1") {
+      if (result.status !== "completed" || !result.downloadUrl) {
+        return NextResponse.json({ error: "El archivo todavía no está disponible." }, { status: 409 });
+      }
+      const headers = new Headers({ "Accept-Encoding": "identity" });
+      const range = req.headers.get("range");
+      if (range) headers.set("Range", range);
+      // Only use the URL returned by the authenticated provider, never a client URL.
+      // No API credentials are forwarded to file storage.
+      const upstream = await fetch(result.downloadUrl, { headers, signal: req.signal, cache: "no-store" });
+      if (!upstream.ok || !upstream.body) {
+        await upstream.body?.cancel();
+        const errorHeaders = new Headers();
+        if (upstream.status === 416 && upstream.headers.has("content-range")) {
+          errorHeaders.set("Content-Range", upstream.headers.get("content-range")!);
+        }
+        return NextResponse.json({ error: "No se pudo transferir el archivo." }, {
+          status: upstream.status === 416 ? 416 : 502, headers: errorHeaders,
+        });
+      }
+      const extension = job.format === "mp3" ? "mp3" : "mp4";
+      const title = String(job.title || "download").replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").slice(0, 150);
+      const responseHeaders = new Headers({
+        "Content-Type": extension === "mp3" ? "audio/mpeg" : "video/mp4",
+        "Content-Disposition": contentDisposition(`${title}.${extension}`),
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      });
+      for (const name of ["content-length", "content-range", "accept-ranges"]) {
+        const value = upstream.headers.get(name);
+        if (value && !upstream.headers.get("content-encoding")) responseHeaders.set(name, value);
+      }
+      return new NextResponse(upstream.body, { status: upstream.status, headers: responseHeaders });
+    }
+    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "No se pudo consultar el trabajo." }, { status: 502 });
   }
