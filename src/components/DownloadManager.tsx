@@ -2,7 +2,7 @@
 
 import { useDownload, DownloadTask } from "../context/DownloadContext";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, CheckCircle2, AlertCircle, Loader2, Music, Video, ExternalLink } from "lucide-react";
+import { X, CheckCircle2, AlertCircle, Loader2, Music, Video, Download } from "lucide-react";
 
 export default function DownloadManager() {
   const { tasks, removeTask } = useDownload();
@@ -84,10 +84,12 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
         {isDone && task.downloadUrl && (
           <a 
             href={task.downloadUrl}
-            className="mt-1 md:mt-2 text-[8px] md:text-[10px] text-purple-400 font-bold flex items-center gap-1 hover:text-purple-300 transition-colors"
-            aria-label="Manually download file"
+            download
+            className="mt-2 w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-[10px] md:text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all text-center pointer-events-auto"
+            aria-label="Descargar archivo listo"
           >
-            Manual Download <ExternalLink className="w-2 md:w-2.5 h-2 md:h-2.5" />
+            <Download className="w-3 md:w-3.5 h-3 md:h-3.5" />
+            <span>Descargar Archivo</span>
           </a>
         )}
       </div>
