@@ -75,6 +75,12 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
           </span>
         </div>
 
+        {isError && task.error && (
+          <p className="mt-2 text-xs text-red-300 break-words whitespace-pre-wrap max-h-32 overflow-y-auto">
+            {task.error}
+          </p>
+        )}
+
         {isDone && task.downloadUrl && (
           <a 
             href={task.downloadUrl}

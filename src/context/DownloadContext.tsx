@@ -55,10 +55,36 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
 
     try {
       if (metadata.platform === "youtube") {
+        const created = await fetch("/api/jobs", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, format: type === "audio" ? "mp3" : `${_quality || "720"}p` }),
+        });
+        let job = await created.json();
+        if (!job.unavailable) {
+          if (!created.ok) throw new Error(job.error || "No se pudo iniciar la descarga.");
+          const ticket = job.ticket;
+          const deadline = Date.now() + 15 * 60 * 1000;
+          while (!["completed", "failed", "deleted"].includes(job.status)) {
+            if (Date.now() > deadline) throw new Error("La preparación superó el tiempo de espera.");
+            updateTask(id, { progress: 30, status: job.status === "queued" ? "En cola" : "Procesando" });
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            const status = await fetch(`/api/jobs?ticket=${encodeURIComponent(ticket)}`, { cache: "no-store" });
+            job = await status.json();
+            if (!status.ok) throw new Error(job.error || "No se pudo consultar la descarga.");
+          }
+          if (job.status !== "completed" || !job.downloadUrl) throw new Error(job.error || "El proveedor no pudo preparar el archivo.");
+          updateTask(id, { progress: 100, status: "Ready", downloadUrl: job.downloadUrl });
+          triggerDownload(job.downloadUrl);
+          triggerConfetti();
+          return;
+        }
         const tunnelUrl = `/api/download?url=${encodeURIComponent(url)}&type=${type}&quality=${_quality || "720"}&filename=${encodeURIComponent(metadata.title)}`;
         const response = await fetch(tunnelUrl);
         if (!response.ok) {
           const detail = await response.json().catch(() => null);
+          if (response.status === 401) {
+            throw new Error("HTTP 401: este backend requiere autenticación. La solicitud fue rechazada antes de descargar o convertir el video.");
+          }
           throw new Error(detail?.error || `Download failed: HTTP ${response.status}`);
         }
         updateTask(id, { progress: 65, status: "Downloading..." });
