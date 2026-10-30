@@ -20,6 +20,35 @@ export interface DownloadTask {
   hidden?: boolean;
   sourceKey?: string;
   pendingDownload?: boolean;
+  url?: string;
+  quality?: string;
+}
+
+/** Turns provider error text into something a normal user can act on. */
+function friendlyProviderError(message?: string): string {
+  if (!message) return "The provider could not prepare the file.";
+  if (/not a bot|signed-in session|sign in to confirm|requires a signed-in/i.test(message)) {
+    return "YouTube blocked this download from our servers. Try another video, or retry in a few minutes.";
+  }
+  return message;
+}
+
+/**
+ * Last-resort fallback: our own extractor (/api/download).
+ * A HEAD request validates availability without downloading the file twice.
+ */
+async function resolveNativeFallback(task: DownloadTask): Promise<string | null> {
+  if (!task.url) return null;
+  const tunnelUrl = `/api/download?url=${encodeURIComponent(task.url)}&type=${task.type}&quality=${task.quality || "720"}&filename=${encodeURIComponent(task.title)}`;
+  try {
+    // probe=1 resolves the stream without downloading the file itself.
+    const probe = await fetch(`${tunnelUrl}&probe=1`, { signal: AbortSignal.timeout(100000) });
+    if (!probe.ok) return null;
+    const contentType = probe.headers.get("content-type") || "";
+    return /^(video|audio)\//.test(contentType) ? tunnelUrl : null;
+  } catch {
+    return null;
+  }
 }
 
 interface DownloadContextType {
@@ -148,11 +177,27 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
 
           if (document.visibilityState === "visible") triggerDownload(dlUrl, finalFilename);
         } else if (data.status === "failed" || data.status === "deleted") {
-          updateTask(task.id, {
-            status: "Error",
-            hidden: false,
-            error: data.error || "The provider could not prepare the file.",
-          });
+          // Provider relays are frequently blocked by YouTube's bot check.
+          // Try our own extractor before surfacing an error.
+          updateTask(task.id, { status: "Processing", progress: null, ticket: undefined });
+          const fallbackUrl = await resolveNativeFallback(task);
+          if (fallbackUrl) {
+            updateTask(task.id, {
+              progress: 100,
+              status: "Ready",
+              downloadUrl: fallbackUrl,
+              pendingDownload: document.visibilityState !== "visible",
+              hidden: false,
+            });
+            triggerConfetti();
+            if (document.visibilityState === "visible") triggerDownload(fallbackUrl, task.filename || "");
+          } else {
+            updateTask(task.id, {
+              status: "Error",
+              hidden: false,
+              error: friendlyProviderError(data.error),
+            });
+          }
         } else {
           // Ongoing progress
           updateTask(task.id, {
@@ -334,6 +379,8 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
       type,
       createdAt: Date.now(),
       sourceKey,
+      url,
+      quality: quality || "720",
     };
 
     tasksRef.current = [newTask, ...tasksRef.current];
