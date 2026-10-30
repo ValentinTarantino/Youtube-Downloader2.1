@@ -2,7 +2,7 @@
 
 Instagram uses its own extractor in src/lib/instagram.ts. YouTube and TikTok are unchanged.
 
-Configure RAPIDAPI_KEY in Vercel project settings → Environment Variables, then redeploy. The key must have a subscription to the selected Download All in One API.
+Configure INSTAGRAM_API_KEY (or RAPIDAPI_KEY for compatibility) in Vercel project settings → Environment Variables, enable it for Production (and Preview if used), then create a new deployment. Existing deployments do not receive newly added variables. The key must have a subscription to the selected Download All in One API.
 
 Default host: instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com
 Endpoint: GET /fetch?url=<public Instagram reel URL>

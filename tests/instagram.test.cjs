@@ -37,7 +37,7 @@ test('calls the selected fetch endpoint and reads its download_url', async () =>
 });
 test('rejects absent credentials and lookalike hosts before network requests', async () => {
   const { getInstagramMetadata, calls } = setup([], {});
-  await assert.rejects(getInstagramMetadata('https://www.instagram.com/reel/abc/'), /not configured/);
+  await assert.rejects(getInstagramMetadata('https://www.instagram.com/reel/abc/'), /configuration is missing/);
   await assert.rejects(getInstagramMetadata('https://instagram.com.attacker.example/reel/abc/'), /valid Instagram/);
   assert.equal(calls.length, 0);
 });
@@ -45,3 +45,9 @@ test('reports unavailable reels instead of returning empty download links', asyn
   const { getInstagramMetadata } = setup([new Response('{}'), new Response('{}')]);
   await assert.rejects(getInstagramMetadata('https://www.instagram.com/reel/abc/'), /could not be retrieved/);
 });
+
+ test('uses the dedicated Instagram key and trims whitespace without changing other providers', async () => {
+   const { getInstagramMetadata, calls } = setup([new Response(JSON.stringify({ download_url: 'https://cdn.example/video.mp4' }))], { INSTAGRAM_API_KEY: '  instagram-secret  ', RAPIDAPI_KEY: 'legacy-secret' });
+   await getInstagramMetadata('https://www.instagram.com/reel/abc/');
+   assert.equal(calls[0].options.headers['x-rapidapi-key'], 'instagram-secret');
+ });

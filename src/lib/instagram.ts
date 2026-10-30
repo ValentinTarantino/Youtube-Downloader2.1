@@ -40,8 +40,8 @@ export async function getInstagramMetadata(raw: string): Promise<VideoMetadata> 
   if (url.protocol !== "https:" || !["instagram.com", "www.instagram.com", "m.instagram.com"].includes(url.hostname) || !match) {
     throw new Error("Please enter a valid Instagram reel or video post link.");
   }
-  const key = process.env.RAPIDAPI_KEY;
-  if (!key) throw new Error("Instagram downloads are not configured yet. Please try again later.");
+  const key = process.env.INSTAGRAM_API_KEY?.trim() || process.env.RAPIDAPI_KEY?.trim();
+  if (!key) throw new Error("Instagram configuration is missing: set INSTAGRAM_API_KEY or RAPIDAPI_KEY in the deployment environment, then redeploy.");
   const cleanUrl = `https://www.instagram.com/${url.pathname.startsWith("/p/") ? "p" : "reel"}/${match[1]}/`;
   const hosts = [...new Set([
     process.env.INSTAGRAM_API_HOST || "instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com",
