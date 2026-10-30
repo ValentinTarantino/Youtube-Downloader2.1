@@ -1,6 +1,6 @@
-# ClipDrop 🎬
+# ClipyDropy 🎬
 
-**ClipDrop** is a high-performance, full-stack media extraction platform designed to seamlessly download high-definition video and audio from **YouTube**, **TikTok**, and **Instagram**. Engineered for speed, compression efficiency, and resilience, it combines modern web technologies with an advanced multi-threaded media processing pipeline.
+**ClipyDropy** is a high-performance, full-stack media extraction platform designed to seamlessly download high-definition video and audio from **YouTube**, **TikTok**, and **Instagram**. Engineered for speed, compression efficiency, and resilience, it combines modern web technologies with an advanced multi-threaded media processing pipeline.
 
 ---
 
@@ -80,7 +80,7 @@ flowchart TD
 ```
 
 ### 1. High-Speed Concurrent Fragment Engine
-Rather than relying on real-time stdout pipes that suffer from YouTube's ~1.7x playback throttling and connection drops on 15–20 minute videos, ClipDrop uses multi-threaded chunking (`--concurrent-fragments 8`). It fetches video and audio fragments simultaneously across multiple TCP sockets at full line speed (25–35+ MB/s), then assembles the final file locally in seconds.
+Rather than relying on real-time stdout pipes that suffer from YouTube's ~1.7x playback throttling and connection drops on 15–20 minute videos, ClipyDropy uses multi-threaded chunking (`--concurrent-fragments 8`). It fetches video and audio fragments simultaneously across multiple TCP sockets at full line speed (25–35+ MB/s), then assembles the final file locally in seconds.
 
 ### 2. Next-Gen Codec Priority & Compression
 To eliminate bloated files while preserving crisp visual detail, the extraction filter enforces strict codec prioritization:
@@ -89,7 +89,7 @@ To eliminate bloated files while preserving crisp visual detail, the extraction 
 3. **AVC1 / H.264**: Universal fallback ensuring broad legacy device compatibility.
 
 ### 3. Audio Continuity & Synchronization
-Live-streamed fragmented MP4s frequently mute in media players near the end of playback due to track timescale drift or missing audio packets in late video fragments. ClipDrop resolves this by merging complete local files with FFmpeg and explicitly encoding the audio track as standard **AAC (LC, 128kbps)** with clean `moov` atom headers, ensuring persistent sound from start to finish.
+Live-streamed fragmented MP4s frequently mute in media players near the end of playback due to track timescale drift or missing audio packets in late video fragments. ClipyDropy resolves this by merging complete local files with FFmpeg and explicitly encoding the audio track as standard **AAC (LC, 128kbps)** with clean `moov` atom headers, ensuring persistent sound from start to finish.
 
 ### 4. BotGuard & Anti-Bot Evasion
 To bypass YouTube's BotGuard challenges and `403 Forbidden` CDN errors:

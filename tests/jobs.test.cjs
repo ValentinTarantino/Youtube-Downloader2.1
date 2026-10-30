@@ -23,6 +23,15 @@ function request(body, origin = 'https://app.example') {
   return { nextUrl: new URL('https://app.example/api/jobs'), headers: new Headers({ origin }), json: async () => body };
 }
 
+test('passes the selected 1080p quality unchanged to the provider', async () => {
+  const { routes } = setup(async (url, options) => {
+    assert.equal(JSON.parse(options.body).format, '1080p');
+    return new Response(JSON.stringify({ id: 'dl_fullhd', status: 'queued' }));
+  });
+  const response = await routes.POST(request({ url: 'https://youtu.be/oR3xm3CyGCI', format: '1080p' }));
+  assert.equal(response.status, 202);
+});
+
 test('quota fallback binds subsequent status requests to the backup account', async () => {
   const seen = [];
   const { routes } = setup(async (url, options) => {

@@ -34,6 +34,13 @@ export default function VideoInfo({ metadata }: VideoInfoProps) {
         ? Film
         : Music2;
 
+  const platformBadge =
+    metadata.platform === "youtube"
+      ? "bg-[#5e1221] border-[#9f1239] text-[#ffd9e0]"
+      : metadata.platform === "tiktok"
+        ? "bg-[#0e3a4a] border-[#22d3ee] text-[#cffafe]"
+        : "bg-[#4a0f33] border-[#ec4899] text-[#fbcfe8]";
+
   return (
     <article className="glass-card rounded-3xl p-4 md:p-6 flex flex-col md:flex-row gap-6 md:gap-8 items-center overflow-hidden relative group">
       <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 blur-3xl -mr-16 -mt-16 group-hover:bg-purple-500/20 transition-colors" aria-hidden="true" />
@@ -71,13 +78,13 @@ export default function VideoInfo({ metadata }: VideoInfoProps) {
         </div>
       </div>
 
-      <div className="flex-1 text-center md:text-left min-w-0">
+      <div className="w-full flex-1 text-center md:text-left min-w-0">
         <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
-          <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[9px] uppercase tracking-widest font-bold text-white/50">
+          <span className={`px-2 py-0.5 rounded-full border text-[9px] uppercase tracking-widest font-bold ${platformBadge}`}>
             {metadata.platform}
           </span>
         </div>
-        <h2 className="text-lg md:text-2xl lg:text-3xl font-bold mb-4 leading-tight text-white group-hover:text-purple-300 transition-colors line-clamp-2">
+        <h2 className="text-lg md:text-2xl lg:text-3xl font-bold mb-4 leading-tight text-white group-hover:text-purple-300 transition-colors line-clamp-2 break-words">
           {metadata.title}
         </h2>
 
@@ -95,8 +102,8 @@ export default function VideoInfo({ metadata }: VideoInfoProps) {
               <CheckCircle className="w-2 md:w-3 h-2 md:h-3 text-white fill-white" />
             </div>
           </div>
-          <div className="flex flex-col items-start">
-            <span className="text-white font-bold text-sm md:text-base tracking-tight">
+          <div className="flex min-w-0 flex-col items-start">
+            <span className="text-white font-bold text-sm md:text-base tracking-tight break-words max-w-full">
               {safeAuthor}
             </span>
             <span className="text-white/30 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">

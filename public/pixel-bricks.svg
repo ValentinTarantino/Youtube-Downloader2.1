@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32" shape-rendering="crispEdges">
+  <!-- Dark mortar background -->
+  <rect width="64" height="32" fill="#120c1a"/>
+
+  <!-- Row 1: Brick 1 (0 to 30, h: 14) -->
+  <rect x="0" y="0" width="30" height="14" fill="#462a52"/>
+  <path d="M0 0h30v2H2v12H0z" fill="#6c447d"/>
+  <path d="M28 2h2v12H2v-2h26z" fill="#25132d"/>
+  <rect x="6" y="5" width="4" height="2" fill="#845799"/>
+  <rect x="20" y="8" width="3" height="2" fill="#2c1735"/>
+
+  <!-- Row 1: Brick 2 (32 to 62, h: 14) -->
+  <rect x="32" y="0" width="30" height="14" fill="#3e234a"/>
+  <path d="M32 0h30v2H34v12H32z" fill="#623b75"/>
+  <path d="M60 2h2v12H34v-2h26z" fill="#210f27"/>
+  <rect x="42" y="4" width="5" height="2" fill="#784b8d"/>
+  <rect x="52" y="9" width="3" height="2" fill="#291432"/>
+
+  <!-- Row 2: Brick 3 (0 to 14, h: 14) -->
+  <rect x="0" y="16" width="14" height="14" fill="#3b2146"/>
+  <path d="M0 16h14v2H2v12H0z" fill="#5e3770"/>
+  <path d="M12 18h2v12H2v-2h10z" fill="#1f0e25"/>
+  <rect x="4" y="21" width="4" height="2" fill="#75488a"/>
+
+  <!-- Row 2: Brick 4 (16 to 46, h: 14) -->
+  <rect x="16" y="16" width="30" height="14" fill="#4a2d57"/>
+  <path d="M16 16h30v2H18v12H16z" fill="#714884"/>
+  <path d="M44 18h2v12H18v-2h26z" fill="#281531"/>
+  <rect x="24" y="20" width="4" height="2" fill="#895c9f"/>
+  <rect x="36" y="24" width="3" height="2" fill="#2d1737"/>
+
+  <!-- Row 2: Brick 5 (48 to 64, h: 14) -->
+  <rect x="48" y="16" width="16" height="14" fill="#41254e"/>
+  <path d="M48 16h16v2H50v12H48z" fill="#663e7a"/>
+  <path d="M62 18h2v12H50v-2h12z" fill="#22112a"/>
+  <rect x="54" y="22" width="4" height="2" fill="#7d5094"/>
+</svg>

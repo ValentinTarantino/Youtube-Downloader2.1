@@ -5,7 +5,7 @@ import contentDisposition from "content-disposition";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 const API = "https://api.vidfetch.dev/v1/downloads";
-const formats = new Set(["360p", "480p", "720p", "mp3"]);
+const formats = new Set(["360p", "480p", "720p", "1080p", "mp3"]);
 function providerKeys() {
   return [...new Set([process.env.VIDFETCH_API_KEY, process.env.VIDFETCH_API_KEY_BACKUP]
     .map(key => key?.trim()).filter((key): key is string => Boolean(key)))];

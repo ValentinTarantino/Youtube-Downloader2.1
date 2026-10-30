@@ -1,12 +1,24 @@
 "use client";
 
+import { motion, useScroll, useSpring, useTransform, useReducedMotion } from "framer-motion";
+
 export default function Background() {
+  const { scrollY } = useScroll();
+  const prefersReducedMotion = useReducedMotion();
+
+  // The brick layer is 200% tall (top: -50%), so shifting it up to -24%
+  // still covers the viewport. Percentages are relative to the layer itself.
+  const rawY = useTransform(scrollY, [0, 2400], ["0%", "-24%"]);
+  const y = useSpring(rawY, { stiffness: 60, damping: 20, mass: 0.3 });
+
   return (
-    <div className="nebulosa-container">
-      <div className="blob left-0 top-0" />
-      <div className="blob blob-2 right-0 bottom-0" />
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-to-t from-[#030303] via-transparent to-transparent" />
-    </div>
+    <>
+      <motion.div
+        className="pixel-brick-background"
+        style={{ y: prefersReducedMotion ? "0%" : y }}
+        aria-hidden="true"
+      />
+      <div className="pixel-scanlines" aria-hidden="true" />
+    </>
   );
 }

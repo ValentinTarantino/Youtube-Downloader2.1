@@ -1,0 +1,93 @@
+
+> yt-pro@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.28
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.0.111:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 1736ms
+ ○ Compiling / ...
+(node:6596) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ Compiled / in 3.7s (1522 modules)
+ GET / 200 in 4173ms
+ GET / 200 in 49ms
+ GET / 200 in 42ms
+ ✓ Compiled in 310ms (677 modules)
+ ✓ Compiled in 137ms (677 modules)
+ ✓ Compiled / in 142ms (827 modules)
+ GET / 200 in 350ms
+ ✓ Compiled in 300ms (677 modules)
+ ✓ Compiled in 234ms (677 modules)
+ ✓ Compiled / in 145ms (827 modules)
+ GET / 200 in 376ms
+ ✓ Compiled in 409ms (1504 modules)
+ GET / 200 in 236ms
+ ✓ Compiled in 256ms (677 modules)
+ ✓ Compiled / in 139ms (827 modules)
+ GET / 200 in 422ms
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: EPERM: operation not permitted, rename 'C:\Users\Usuario\Desktop\CodigoValen\Youtube-Downloader2.1-main\.next\cache\webpack\client-development\0.pack.gz_' -> 'C:\Users\Usuario\Desktop\CodigoValen\Youtube-Downloader2.1-main\.next\cache\webpack\client-development\0.pack.gz'
+ ✓ Compiled in 251ms (677 modules)
+ ✓ Compiled / in 151ms (827 modules)
+ GET / 200 in 412ms
+ ✓ Compiled in 393ms (677 modules)
+ ✓ Compiled / in 136ms (827 modules)
+ GET / 200 in 1632ms
+ ✓ Compiled in 300ms (677 modules)
+ ✓ Compiled / in 136ms (827 modules)
+ GET / 200 in 407ms
+ ✓ Compiled in 319ms (677 modules)
+ ✓ Compiled / in 136ms (827 modules)
+ GET / 200 in 407ms
+ ✓ Compiled in 318ms (677 modules)
+ ✓ Compiled / in 198ms (827 modules)
+ GET / 200 in 457ms
+ ✓ Compiled in 350ms (1504 modules)
+ GET / 200 in 174ms
+ ✓ Compiled in 342ms (677 modules)
+ ✓ Compiled in 230ms (677 modules)
+ ✓ Compiled in 188ms (677 modules)
+ ✓ Compiled / in 189ms (827 modules)
+ GET / 200 in 459ms
+ ✓ Compiled in 283ms (677 modules)
+ ✓ Compiled in 370ms (678 modules)
+ ✓ Compiled / in 170ms (828 modules)
+ GET / 200 in 534ms
+ ✓ Compiled in 251ms (678 modules)
+ ✓ Compiled in 195ms (678 modules)
+ ✓ Compiled in 211ms (678 modules)
+ ✓ Compiled / in 150ms (828 modules)
+ GET / 200 in 405ms
+ GET / 200 in 50ms
+ ✓ Compiled in 161ms (678 modules)
+ ✓ Compiled in 121ms (678 modules)
+ ✓ Compiled in 162ms (678 modules)
+ ✓ Compiled in 128ms (678 modules)
+ ✓ Compiled in 248ms (680 modules)
+ ✓ Compiled / in 242ms (830 modules)
+ GET / 200 in 547ms
+ ✓ Compiled in 306ms (680 modules)
+ ✓ Compiled / in 126ms (830 modules)
+ GET / 200 in 398ms
+ ✓ Compiled in 234ms (1510 modules)
+ GET / 200 in 170ms
+ ✓ Compiled in 408ms (1510 modules)
+ GET / 200 in 168ms
+ ✓ Compiled in 259ms (680 modules)
+ ✓ Compiled in 163ms (680 modules)
+ ✓ Compiled in 169ms (680 modules)
+ ✓ Compiled in 110ms (680 modules)
+ ✓ Compiled in 199ms (680 modules)
+ ✓ Compiled / in 160ms (830 modules)
+ GET / 200 in 442ms
+ ✓ Compiled in 291ms (1510 modules)
+ GET / 200 in 175ms
+ ✓ Compiled in 167ms (680 modules)
+ ✓ Compiled / in 142ms (830 modules)
+ GET / 200 in 455ms
+ ✓ Compiled in 259ms (680 modules)
+ ✓ Compiled / in 134ms (830 modules)
+ GET / 200 in 390ms

@@ -1,123 +1,360 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&family=Press+Start+2P&family=Silkscreen:wght@400;700&family=VT323&display=swap');
+
+@font-face {
+  font-family: 'LowresPixel';
+  src: url('/fonts/LowresPixel-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @import "tailwindcss";
 
 @layer base {
   body {
-    background-color: #030303;
-    color: #ffffff;
-    font-family: 'Outfit', sans-serif;
+    background-color: #120c1a;
+    color: #fff5db;
+    font-family: 'Pixelify Sans', 'Courier New', monospace;
+    image-rendering: pixelated;
     -webkit-font-smoothing: antialiased;
   }
-}
 
-@layer components {
-  .glass-card {
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  /* Force retro pixel geometry: no rounded curves in pixel art */
+  * {
+    border-radius: 0px !important;
   }
 
-  .glass-input {
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    transition: all 0.3s ease;
-  }
-
-  .glass-input:focus {
-    border-color: rgba(168, 85, 247, 0.4);
-    box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.1);
-    outline: none;
-  }
-
-  .premium-button {
-    background: linear-gradient(135deg, #9333ea 0%, #3b82f6 100%);
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 0 20px rgba(147, 51, 234, 0.3);
-  }
-
-  .premium-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 0 30px rgba(147, 51, 234, 0.5);
-    filter: brightness(1.1);
-  }
-
-  .premium-button:active {
-    transform: translateY(0);
+  /* Selected text highlight */
+  ::selection {
+    background: #f472b6;
+    color: #1b0b24;
   }
 }
 
-.nebulosa-container {
+/* --- RETRO FONTS --- */
+.pixel-font-title {
+  font-family: 'Press Start 2P', monospace;
+  line-height: 1.4;
+}
+
+.pixel-font-body {
+  font-family: 'Pixelify Sans', 'Courier New', monospace;
+}
+
+.pixel-font-code {
+  font-family: 'VT323', monospace;
+}
+
+/* --- BRICK BACKGROUND & SCANLINES --- */
+.pixel-brick-background {
   position: fixed;
-  top: 0;
+  top: -50%;
   left: 0;
-  width: 100%;
-  height: 100%;
+  right: 0;
+  height: 200%;
+  z-index: -2;
+  pointer-events: none;
+  will-change: transform;
+  background-color: #120c1a;
+  background-image:
+    radial-gradient(circle at 50% 15%, rgba(147, 51, 234, 0.22) 0%, transparent 65%),
+    radial-gradient(circle at 85% 85%, rgba(37, 99, 235, 0.15) 0%, transparent 55%),
+    linear-gradient(180deg, rgba(18, 12, 26, 0.5) 0%, rgba(14, 9, 20, 0.85) 100%),
+    url('/pixel-bricks.svg');
+  background-size: 100% 100%, 100% 100%, 100% 100%, 96px 48px;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.pixel-scanlines {
+  position: fixed;
+  inset: 0;
   z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(rgba(18, 12, 26, 0) 50%,
+      rgba(0, 0, 0, 0.35) 50%);
+  background-size: 100% 4px;
+  opacity: 0.6;
+}
+
+/* --- PIXEL CARDS & WINDOWS (RPG DIALOGUE BOXES) --- */
+.glass-card,
+.pixel-card {
+  background: #1c152a !important;
+  border: 4px solid #000 !important;
+  backdrop-filter: none !important;
+  box-shadow:
+    inset 4px 4px 0px 0px #5a4270,
+    inset -4px -4px 0px 0px #0e0716,
+    6px 6px 0px 0px #000000 !important;
+  position: relative;
+}
+
+.glass-card:hover,
+.pixel-card:hover {
+  border-color: #000 !important;
+}
+
+/* --- PIXEL INPUTS (8-BIT TERMINAL CONSOLE) --- */
+.glass-input,
+.pixel-input {
+  background: #0f0a17 !important;
+  color: #fef08a !important;
+  border: 4px solid #000 !important;
+  box-shadow:
+    inset 4px 4px 0px 0px #07040a,
+    inset -4px -4px 0px 0px #3c2a4f,
+    4px 4px 0px 0px #000000 !important;
+  font-family: 'VT323', 'Pixelify Sans', monospace !important;
+  font-size: 1rem !important;
+  letter-spacing: 0.04em;
+  backdrop-filter: none !important;
+  outline: none !important;
+  transition: box-shadow 0.1s ease;
+}
+
+.glass-input:focus,
+.pixel-input:focus {
+  border-color: #a855f7 !important;
+  box-shadow:
+    inset 4px 4px 0px 0px #07040a,
+    inset -4px -4px 0px 0px #3c2a4f,
+    0 0 0 2px #c084fc,
+    5px 5px 0px 0px #000 !important;
+}
+
+.glass-input::placeholder,
+.pixel-input::placeholder {
+  color: #7d6b8e !important;
+  opacity: 1;
+}
+
+/* --- PIXEL ARCADE BUTTONS (3D PUSH EFFECT) --- */
+.premium-button,
+.pixel-btn {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 11px !important;
+  letter-spacing: 0.05em;
+  background: #8051cc !important;
+  border: 4px solid #000 !important;
+  color: #ffffff !important;
+  box-shadow:
+    inset 3px 3px 0px 0px #caa3ff,
+    inset -3px -3px 0px 0px #421e78,
+    4px 4px 0px 0px #000000 !important;
+  text-shadow: 2px 2px 0px #000;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background-color 0.1s ease !important;
+  cursor: pointer;
+  user-select: none;
+}
+
+.premium-button:hover,
+.pixel-btn:hover {
+  background: #935fe0 !important;
+  transform: translate(-1px, -1px);
+  box-shadow:
+    inset 3px 3px 0px 0px #d4b5ff,
+    inset -3px -3px 0px 0px #421e78,
+    5px 5px 0px 0px #000000 !important;
+  filter: none !important;
+}
+
+.premium-button:active,
+.pixel-btn:active {
+  transform: translate(3px, 3px) !important;
+  box-shadow:
+    inset 3px 3px 0px 0px #421e78,
+    inset -3px -3px 0px 0px #caa3ff,
+    1px 1px 0px 0px #000000 !important;
+}
+
+.pixel-btn-emerald {
+  background: #059669 !important;
+  box-shadow:
+    inset 3px 3px 0px 0px #6ee7b7,
+    inset -3px -3px 0px 0px #064e3b,
+    4px 4px 0px 0px #000000 !important;
+}
+
+.pixel-btn-emerald:hover {
+  background: #10b981 !important;
+}
+
+.pixel-btn-emerald:active {
+  box-shadow:
+    inset 3px 3px 0px 0px #064e3b,
+    inset -3px -3px 0px 0px #6ee7b7,
+    1px 1px 0px 0px #000000 !important;
+}
+
+.pixel-btn-pink {
+  background: #db2777 !important;
+  box-shadow:
+    inset 3px 3px 0px 0px #f9a8d4,
+    inset -3px -3px 0px 0px #831843,
+    4px 4px 0px 0px #000000 !important;
+}
+
+.pixel-btn-pink:hover {
+  background: #ec4899 !important;
+}
+
+.pixel-btn-pink:active {
+  box-shadow:
+    inset 3px 3px 0px 0px #831843,
+    inset -3px -3px 0px 0px #f9a8d4,
+    1px 1px 0px 0px #000000 !important;
+}
+
+.pixel-btn-cyan {
+  background: #0284c7 !important;
+  box-shadow:
+    inset 3px 3px 0px 0px #7dd3fc,
+    inset -3px -3px 0px 0px #075985,
+    4px 4px 0px 0px #000000 !important;
+}
+
+.pixel-btn-cyan:hover {
+  background: #0ea5e9 !important;
+}
+
+.pixel-btn-cyan:active {
+  box-shadow:
+    inset 3px 3px 0px 0px #075985,
+    inset -3px -3px 0px 0px #7dd3fc,
+    1px 1px 0px 0px #000000 !important;
+}
+
+/* --- LOGO & ARCADE TYPOGRAPHY --- */
+.pixel-logo {
+  font-family: 'LowresPixel', 'Silkscreen', 'Press Start 2P', monospace !important;
+  font-weight: normal !important;
+  color: #ffe387;
+  text-shadow:
+    3px 3px 0px #a16207,
+    6px 6px 0px #000000,
+    9px 9px 0px #241335;
+  letter-spacing: -0.02em;
+}
+
+/* ── Arcade cabinet screen frame ─────────────────────────────── */
+.arcade-screen {
+  background: #0d0718;
+  /* outer bezel */
+  border: 6px solid #1a0f2e;
+  /* inner highlight line (top-left) + dark line (bottom-right) */
+  outline: 3px solid #000;
+  box-shadow:
+    /* inset top/left highlight */
+    inset 3px 3px 0 #2e1a52,
+    inset -3px -3px 0 #08040f,
+    /* outer coloured glow */
+    0 0 0 3px #6d28d9,
+    0 0 0 6px #000,
+    /* hard pixel drop shadow */
+    8px 8px 0 #000;
+  padding: 1.75rem 2.5rem 2rem;
+}
+
+.arcade-eyebrow {
+  font-family: 'Press Start 2P', monospace;
+  color: #a78bfa;
+  text-shadow: 2px 2px 0px #000;
+  letter-spacing: 0.15em;
+}
+
+/* --- PIXEL HEALTH / MANA SEGMENTED PROGRESS BAR --- */
+.pixel-progress-track {
+  background: #0d0814;
+  border: 3px solid #000;
+  box-shadow: inset 2px 2px 0 #050308, 2px 2px 0 #000;
+  height: 16px;
+  position: relative;
   overflow: hidden;
-  background: #030303;
 }
 
-.blob {
-  position: absolute;
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(147, 51, 234, 0.15) 0%, transparent 70%);
-  border-radius: 50%;
-  filter: blur(80px);
-  animation: move 20s infinite alternate;
+.pixel-progress-fill {
+  height: 100%;
+  background: repeating-linear-gradient(90deg,
+      #10b981 0px,
+      #10b981 8px,
+      #059669 8px,
+      #059669 10px);
+  box-shadow: inset 0 2px 0 #6ee7b7, inset 0 -2px 0 #047857;
+  transition: width 0.3s steps(10);
 }
 
-.blob-2 {
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
-  animation-delay: -5s;
-  animation-duration: 25s;
-}
+/* --- PIXEL BADGES --- */
+@keyframes arcade-blink {
 
-@keyframes move {
-  from {
-    transform: translate(-10%, -10%);
+  0%,
+  49% {
+    color: #facc15;
+    text-shadow: 0 0 8px #facc15, 0 0 18px #f59e0b;
   }
 
-  to {
-    transform: translate(110%, 110%);
-  }
-}
-
-@keyframes shimmer {
+  50%,
   100% {
-    transform: translateX(100%);
+    color: #fb923c;
+    text-shadow: 0 0 8px #fb923c, 0 0 18px #ef4444;
   }
 }
 
-html {
-  scroll-behavior: smooth;
-  scrollbar-width: thin;
-  scrollbar-color: #9333ea transparent;
+.arcade-insert {
+  animation: arcade-blink 0.85s step-start infinite;
 }
 
+.pixel-badge {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  padding: 5px 10px;
+  background: #2a1f3d;
+  border: 2px solid #000;
+  box-shadow: inset 1px 1px 0 #58417d, 2px 2px 0 #000;
+  color: #ffe387;
+  text-transform: uppercase;
+}
+
+/* Platform-tinted badges */
+.pixel-badge.platform-youtube {
+  background: #5e1221;
+  border-color: #9f1239;
+  box-shadow: inset 1px 1px 0 #b04155, 2px 2px 0 #000;
+  color: #ffd9e0;
+}
+
+.pixel-badge.platform-tiktok {
+  background: #0e3a4a;
+  border-color: #22d3ee;
+  box-shadow: inset 1px 1px 0 #3f8fa3, 2px 2px 0 #000;
+  color: #cffafe;
+}
+
+.pixel-badge.platform-instagram {
+  background: #4a0f33;
+  border-color: #ec4899;
+  box-shadow: inset 1px 1px 0 #9d3a68, 2px 2px 0 #000;
+  color: #fbcfe8;
+}
+
+/* --- CUSTOM PIXEL SCROLLBAR --- */
 ::-webkit-scrollbar {
-  width: 4px;
+  width: 12px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #120c1a;
+  border-left: 2px solid #000;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, transparent, #9333ea, #3b82f6, transparent);
-  border-radius: 100px;
-  box-shadow: 0 0 10px rgba(147, 51, 234, 0.5);
+  background: #7c3aed;
+  border: 2px solid #000;
+  box-shadow: inset 2px 2px 0 #c4b5fd, inset -2px -2px 0 #4c1d95;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(to bottom, #9333ea, #3b82f6);
-  width: 6px;
-}
-
-::-webkit-scrollbar-button {
-  display: none;
+  background: #9333ea;
 }
