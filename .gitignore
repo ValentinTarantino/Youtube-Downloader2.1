@@ -22,6 +22,10 @@ node_modules
 
 # misc
 .tools/
+*.log
+
+# Markdown documents
+*.[mM][dD]
 .DS_Store
 *.pem
 
@@ -46,3 +50,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# GEMINI.MD
+GEMINI.MD
