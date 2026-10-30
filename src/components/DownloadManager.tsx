@@ -3,6 +3,7 @@
 import { useDownload, DownloadTask } from "../context/DownloadContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle2, AlertCircle, Loader2, Music, Video, Download } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export default function DownloadManager() {
   const { tasks, removeTask } = useDownload();
@@ -16,7 +17,7 @@ export default function DownloadManager() {
       aria-live="polite"
     >
       <AnimatePresence mode="popLayout">
-        {tasks.map((task) => (
+        {tasks.filter((task) => !task.hidden).map((task) => (
           <DownloadItem key={task.id} task={task} onRemove={() => removeTask(task.id)} />
         ))}
       </AnimatePresence>
@@ -28,6 +29,15 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
   const isDone = task.status === "Ready";
   const isError = task.status === "Error";
   const isProcessing = !isDone && !isError;
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!isProcessing || !task.createdAt) return;
+    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - task.createdAt!) / 1000)));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [isProcessing, task.createdAt]);
+  const stage = task.status === "Queued" ? "En cola" : task.status === "Starting..." ? "Iniciando" : "Preparando archivo";
 
   return (
     <motion.div
@@ -37,7 +47,7 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
       layout
       className="pointer-events-auto glass-card rounded-2xl p-2 md:p-3 shadow-2xl border border-white/10 flex gap-3 overflow-hidden relative group"
     >
-      {isProcessing && (
+      {isProcessing && task.progress !== null && (
         <motion.div 
           className="absolute inset-0 bg-purple-500/10 origin-left pointer-events-none"
           initial={{ scaleX: 0 }}
@@ -71,9 +81,14 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
           <span className={`text-[8px] md:text-[10px] font-bold uppercase tracking-widest ${
             isDone ? "text-emerald-400" : isError ? "text-red-400" : "text-white/40"
           }`}>
-            {isDone ? "Ready to download" : isError ? "Error" : `${task.status} ${task.progress}%`}
+            {isDone ? "Archivo preparado" : isError ? "Error" : `${stage}${task.progress !== null ? ` ${Math.round(task.progress)}%` : ""}`}
           </span>
         </div>
+
+        {isProcessing && <p className="mt-2 text-xs text-white/60">
+          {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")} transcurridos · la descarga comenzará al estar listo.
+        </p>}
+        {isDone && <p className="mt-2 text-xs text-white/60">Revisá las descargas del navegador. Si no comenzó, usá el botón.</p>}
 
         {isError && task.error && (
           <p className="mt-2 text-xs text-red-300 break-words whitespace-pre-wrap max-h-32 overflow-y-auto">
@@ -96,7 +111,8 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
 
       <button 
         onClick={onRemove}
-        aria-label="Remove download notification"
+        aria-label="Ocultar aviso; la preparación continúa"
+        title="Ocultar aviso; la preparación continúa"
         className="absolute top-1 right-1 md:top-2 md:right-2 text-white/20 hover:text-white transition-colors p-1"
       >
         <X className="w-3 h-3 md:w-4 md:h-4" />

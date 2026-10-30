@@ -9,7 +9,7 @@ export interface DownloadTask {
   jobId: string;
   title: string;
   thumbnail: string;
-  progress: number;
+  progress: number | null;
   status: string;
   downloadUrl?: string;
   type: "video" | "audio";
@@ -17,6 +17,9 @@ export interface DownloadTask {
   ticket?: string;
   filename?: string;
   createdAt?: number;
+  hidden?: boolean;
+  sourceKey?: string;
+  pendingDownload?: boolean;
 }
 
 interface DownloadContextType {
@@ -36,7 +39,9 @@ const STORAGE_KEY = "clipdrop_tasks_v2";
 export function DownloadProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
   const tasksRef = useRef<DownloadTask[]>([]);
-  tasksRef.current = tasks;
+  const polling = useRef(new Set<string>());
+  const [hydrated, setHydrated] = useState(false);
+
 
   const triggerConfetti = () => {
     confetti({
@@ -69,38 +74,48 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
         const parsed: DownloadTask[] = JSON.parse(saved);
         const dayAgo = Date.now() - 24 * 3600 * 1000;
         const valid = parsed.filter((t) => (t.createdAt || 0) > dayAgo);
+        tasksRef.current = valid;
         setTasks(valid);
       }
     } catch {}
+    setHydrated(true);
   }, []);
 
   // Save tasks to localStorage on update
   useEffect(() => {
+    if (!hydrated) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
     } catch {}
-  }, [tasks]);
+  }, [tasks, hydrated]);
 
   const updateTask = useCallback((id: string, updates: Partial<DownloadTask>) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
-    );
+    const next = tasksRef.current.map(t => t.id === id ? { ...t, ...updates } : t);
+    tasksRef.current = next;
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+    setTasks(next);
   }, []);
 
   // Central polling function for a single ticket
   const checkJobStatus = useCallback(
     async (task: DownloadTask) => {
       if (!task.ticket || task.status === "Ready" || task.status === "Error") return;
+      if (polling.current.has(task.id)) return;
+      polling.current.add(task.id);
 
       try {
         const res = await fetch(`/api/jobs?ticket=${encodeURIComponent(task.ticket)}`, {
           cache: "no-store",
+          signal: AbortSignal.timeout(20000),
         });
 
         if (!res.ok) {
+          // A temporary provider/network failure must not abandon a running job.
+          if (res.status === 429 || res.status >= 500) return;
           const detail = await res.json().catch(() => null);
           updateTask(task.id, {
             status: "Error",
+            hidden: false,
             error: detail?.error || "Error checking status.",
           });
           return;
@@ -118,6 +133,8 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
             progress: 100,
             status: "Ready",
             downloadUrl: dlUrl,
+            pendingDownload: document.visibilityState !== "visible",
+            hidden: false,
           });
 
           triggerConfetti();
@@ -129,21 +146,24 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
             } catch {}
           }
 
-          triggerDownload(dlUrl, finalFilename);
-        } else if (data.status === "failed") {
+          if (document.visibilityState === "visible") triggerDownload(dlUrl, finalFilename);
+        } else if (data.status === "failed" || data.status === "deleted") {
           updateTask(task.id, {
             status: "Error",
+            hidden: false,
             error: data.error || "The provider could not prepare the file.",
           });
         } else {
           // Ongoing progress
           updateTask(task.id, {
-            progress: data.progress ? Math.min(Math.max(data.progress, 20), 90) : 35,
+            progress: typeof data.progress === "number" && Number.isFinite(data.progress) && data.progress >= 0 && data.progress <= 100 ? data.progress : null,
             status: data.status === "queued" ? "Queued" : "Processing",
           });
         }
       } catch (err) {
         console.warn("[JOB POLL WARNING]", err);
+      } finally {
+        polling.current.delete(task.id);
       }
     },
     [updateTask]
@@ -151,64 +171,37 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
 
   // Poll all currently active tasks
   const pollActiveTasks = useCallback(() => {
+    if (navigator.onLine === false) return;
     const current = tasksRef.current;
     for (const task of current) {
+      if (task.pendingDownload && task.downloadUrl && document.visibilityState === "visible") {
+        updateTask(task.id, { pendingDownload: false, hidden: false });
+        triggerDownload(task.downloadUrl, task.filename);
+      }
       if (task.ticket && task.status !== "Ready" && task.status !== "Error") {
         checkJobStatus(task);
       }
     }
-  }, [checkJobStatus]);
+  }, [checkJobStatus, updateTask]);
 
-  // Background Web Worker ticker + VisibilityChange wake-up handler
+  // Provider jobs run independently. Browser timers may stop when a phone sleeps.
   useEffect(() => {
-    let worker: Worker | null = null;
-    let fallbackInterval: NodeJS.Timeout | null = null;
-
-    // Web Worker timer resists mobile tab throttle
-    try {
-      const code = `
-        let timer = null;
-        self.onmessage = function(e) {
-          if (e.data === 'start') {
-            if (!timer) timer = setInterval(function() { self.postMessage('tick'); }, 2500);
-          } else if (e.data === 'stop') {
-            if (timer) { clearInterval(timer); timer = null; }
-          }
-        };
-      `;
-      const blob = new Blob([code], { type: "application/javascript" });
-      const workerUrl = URL.createObjectURL(blob);
-      worker = new Worker(workerUrl);
-      worker.onmessage = () => {
-        pollActiveTasks();
-      };
-      worker.postMessage("start");
-    } catch {
-      fallbackInterval = setInterval(pollActiveTasks, 2500);
-    }
-
-    // Wake-up immediately on tab return / mobile screen unlock
-    const handleWakeup = () => {
-      if (document.visibilityState === "visible") {
-        pollActiveTasks();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleWakeup);
-    window.addEventListener("focus", handleWakeup);
-
+    if (!hydrated) return;
+    const wake = () => { if (document.visibilityState === "visible") pollActiveTasks(); };
+    pollActiveTasks();
+    const timer = setInterval(pollActiveTasks, 2500);
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
+    window.addEventListener("pageshow", wake);
+    window.addEventListener("online", wake);
     return () => {
-      if (worker) {
-        try {
-          worker.postMessage("stop");
-          worker.terminate();
-        } catch {}
-      }
-      if (fallbackInterval) clearInterval(fallbackInterval);
-      document.removeEventListener("visibilitychange", handleWakeup);
-      window.removeEventListener("focus", handleWakeup);
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
+      window.removeEventListener("pageshow", wake);
+      window.removeEventListener("online", wake);
     };
-  }, [pollActiveTasks]);
+  }, [pollActiveTasks, hydrated]);
 
   // Execute processing in the background without blocking the UI
   const processTask = async (
@@ -229,6 +222,7 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
         try {
           const created = await fetch("/api/jobs", {
             method: "POST",
+            keepalive: true,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               url,
@@ -243,8 +237,9 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
             ticket: jobResult.ticket,
             filename: finalFilename,
             status: jobResult.status === "queued" ? "Queued" : "Processing",
-            progress: 25,
+            progress: null,
           });
+
 
           // Perform initial check immediately
           checkJobStatus({
@@ -252,7 +247,7 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
             jobId: "",
             title: metadata.title,
             thumbnail: metadata.thumbnail,
-            progress: 25,
+            progress: null,
             status: "Processing",
             type,
             ticket: jobResult.ticket,
@@ -307,6 +302,7 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       updateTask(id, {
         status: "Error",
+        hidden: false,
         error: (error as Error).message,
       });
     }
@@ -318,26 +314,39 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
     type: "video" | "audio",
     quality: DownloadOptions["quality"]
   ) => {
+    const sourceKey = JSON.stringify([url, type, quality || "720"]);
+    const existing = tasksRef.current.find(task => task.sourceKey === sourceKey && task.status !== "Error"
+      && (!task.ticket || Number(task.ticket.split(".")[1]) > Date.now()));
+    if (existing) {
+      updateTask(existing.id, { hidden: false });
+      if (existing.status === "Ready" && existing.downloadUrl) triggerDownload(existing.downloadUrl, existing.filename);
+      else if (existing.ticket) void checkJobStatus(existing);
+      return;
+    }
     const id = Math.random().toString(36).substring(2, 11);
     const newTask: DownloadTask = {
       id,
       jobId: "",
       title: metadata.title,
       thumbnail: metadata.thumbnail,
-      progress: 15,
+      progress: null,
       status: "Starting...",
       type,
       createdAt: Date.now(),
+      sourceKey,
     };
 
-    setTasks((prev) => [newTask, ...prev]);
+    tasksRef.current = [newTask, ...tasksRef.current];
+    setTasks(tasksRef.current);
 
     // Dispatch background process immediately without blocking UI
     processTask(id, url, metadata, type, quality);
   };
 
   const removeTask = (id: string) => {
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+    // Dismiss the notification without deleting the provider job's tracking state.
+    // Completion brings the download action back, including after a page reload.
+    updateTask(id, { hidden: true });
   };
 
   return (
