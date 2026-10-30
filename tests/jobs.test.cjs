@@ -4,10 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
-function setup(responder) {
+function setup(responder, env = {}) {
   let calls = 0;
   const context = { exports: {}, require, URL, Buffer, AbortSignal, Headers,
-    process: { env: { VIDFETCH_API_KEY: 'test-secret' } },
+    process: { env: { VIDFETCH_API_KEY: 'test-secret', ...env } },
     fetch: async (...args) => {
       calls++;
       if (responder) return responder(...args);
@@ -22,6 +22,34 @@ function setup(responder) {
 function request(body, origin = 'https://app.example') {
   return { nextUrl: new URL('https://app.example/api/jobs'), headers: new Headers({ origin }), json: async () => body };
 }
+
+test('quota fallback binds subsequent status requests to the backup account', async () => {
+  const seen = [];
+  const { routes } = setup(async (url, options) => {
+    seen.push(options.headers.Authorization);
+    if (options.headers.Authorization === 'Bearer test-secret') return new Response('{}', { status: 402 });
+    return new Response(JSON.stringify({ id: 'dl_backup', status: 'queued' }));
+  }, { VIDFETCH_API_KEY_BACKUP: 'backup-secret' });
+  const created = await routes.POST(request({ url: 'https://youtu.be/oR3xm3CyGCI', format: '720p' }));
+  assert.equal(created.status, 202);
+  const { ticket } = await created.json();
+  assert.equal((await routes.GET({ nextUrl: new URL(`https://app.example/api/jobs?ticket=${ticket}`) })).status, 200);
+  assert.deepEqual(seen, ['Bearer test-secret', 'Bearer backup-secret', 'Bearer backup-secret']);
+});
+
+test('does not switch accounts for ambiguous failures, auth errors or rate limits', async () => {
+  for (const status of [401, 429, 500]) {
+    const { routes, calls } = setup(async () => new Response('{}', { status }), { VIDFETCH_API_KEY_BACKUP: 'backup-secret' });
+    assert.equal((await routes.POST(request({ url: 'https://youtu.be/oR3xm3CyGCI', format: '720p' }))).status, 502);
+    assert.equal(calls(), 1);
+  }
+});
+
+test('stops when both quotas are exhausted', async () => {
+  const { routes, calls } = setup(async () => new Response('{}', { status: 402 }), { VIDFETCH_API_KEY_BACKUP: 'backup-secret' });
+  assert.equal((await routes.POST(request({ url: 'https://youtu.be/oR3xm3CyGCI', format: '720p' }))).status, 502);
+  assert.equal(calls(), 2);
+});
 test('creates signed job access without returning provider credentials', async () => {
   const { routes, calls } = setup();
   const response = await routes.POST(request({ url: 'https://youtu.be/oR3xm3CyGCI', format: '720p' }));

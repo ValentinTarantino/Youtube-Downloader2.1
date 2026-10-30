@@ -71,7 +71,7 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
           <span className={`text-[8px] md:text-[10px] font-bold uppercase tracking-widest ${
             isDone ? "text-emerald-400" : isError ? "text-red-400" : "text-white/40"
           }`}>
-            {isDone ? "Listo para descargar" : isError ? "Error" : `${task.status} ${task.progress}%`}
+            {isDone ? "Ready to download" : isError ? "Error" : `${task.status} ${task.progress}%`}
           </span>
         </div>
 
@@ -86,10 +86,10 @@ function DownloadItem({ task, onRemove }: { task: DownloadTask; onRemove: () => 
             href={task.downloadUrl}
             download
             className="mt-2 w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-[10px] md:text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all text-center pointer-events-auto"
-            aria-label="Descargar archivo listo"
+            aria-label="Download ready file"
           >
             <Download className="w-3 md:w-3.5 h-3 md:h-3.5" />
-            <span>Descargar Archivo</span>
+            <span>Download File</span>
           </a>
         )}
       </div>

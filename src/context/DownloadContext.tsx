@@ -101,7 +101,7 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
           const detail = await res.json().catch(() => null);
           updateTask(task.id, {
             status: "Error",
-            error: detail?.error || "Error consultando estado.",
+            error: detail?.error || "Error checking status.",
           });
           return;
         }
@@ -133,13 +133,13 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
         } else if (data.status === "failed") {
           updateTask(task.id, {
             status: "Error",
-            error: data.error || "El proveedor no pudo preparar el archivo.",
+            error: data.error || "The provider could not prepare the file.",
           });
         } else {
           // Ongoing progress
           updateTask(task.id, {
             progress: data.progress ? Math.min(Math.max(data.progress, 20), 90) : 35,
-            status: data.status === "queued" ? "En cola" : "Procesando",
+            status: data.status === "queued" ? "Queued" : "Processing",
           });
         }
       } catch (err) {
@@ -242,7 +242,7 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
           updateTask(id, {
             ticket: jobResult.ticket,
             filename: finalFilename,
-            status: jobResult.status === "queued" ? "En cola" : "Procesando",
+            status: jobResult.status === "queued" ? "Queued" : "Processing",
             progress: 25,
           });
 
@@ -253,7 +253,7 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
             title: metadata.title,
             thumbnail: metadata.thumbnail,
             progress: 25,
-            status: "Procesando",
+            status: "Processing",
             type,
             ticket: jobResult.ticket,
             filename: finalFilename,
@@ -325,7 +325,7 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
       title: metadata.title,
       thumbnail: metadata.thumbnail,
       progress: 15,
-      status: "Iniciando...",
+      status: "Starting...",
       type,
       createdAt: Date.now(),
     };

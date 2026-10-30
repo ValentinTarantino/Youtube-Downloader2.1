@@ -48,9 +48,9 @@ export default function DownloadOptions({ url, metadata }: DownloadOptionsProps)
                       aria-label="Select video quality"
                       className="bg-transparent text-white/40 text-xs md:text-sm font-medium outline-none cursor-pointer hover:text-white transition-colors appearance-none pr-5"
                     >
-                      <option value="720" className="bg-[#111]">720p (HD - Rápido y Ligero)</option>
+                      <option value="720" className="bg-[#111]">720p (HD - Fast & Light)</option>
                       <option value="480" className="bg-[#111]">480p (SD)</option>
-                      <option value="360" className="bg-[#111]">360p (Ultra Ligero)</option>
+                      <option value="360" className="bg-[#111]">360p (Ultra Light)</option>
                     </select>
                     <ChevronDown className="w-3 h-3 absolute right-0 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none" />
                   </>

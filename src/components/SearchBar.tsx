@@ -6,20 +6,20 @@ import { Search as SearchIcon, Loader2 as LoaderIcon } from "lucide-react";
 interface SearchBarProps {
   onSearch: (url: string) => void;
   isLoading: boolean;
-  externalUrl?: string; // Nuevo prop para sincronizar con el historial
+  externalUrl?: string; // New prop to sync with history
 }
 
 export default function SearchBar({ onSearch, isLoading, externalUrl = "" }: SearchBarProps) {
   const [url, setUrl] = useState(externalUrl);
 
-  // Sincronizar el input cuando se hace clic en el historial
+  // Sync the input when a history item is clicked
   useEffect(() => {
     if (externalUrl) {
       setUrl(externalUrl);
     }
   }, [externalUrl]);
 
-  // Regresar atrás automáticamente si el usuario borra todo
+  // Automatically go back if the user clears the input
   useEffect(() => {
     if (url === "" && !isLoading) {
       onSearch("");

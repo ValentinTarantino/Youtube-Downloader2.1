@@ -6,6 +6,13 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 const API = "https://api.vidfetch.dev/v1/downloads";
 const formats = new Set(["360p", "480p", "720p", "mp3"]);
+function providerKeys() {
+  return [...new Set([process.env.VIDFETCH_API_KEY, process.env.VIDFETCH_API_KEY_BACKUP]
+    .map(key => key?.trim()).filter((key): key is string => Boolean(key)))];
+}
+class ProviderError extends Error {
+  constructor(public status: number, message: string) { super(message); }
+}
 function sign(id: string, expiry: number, key: string) {
   return createHmac("sha256", key).update(`${id}:${expiry}`).digest("hex");
 }
@@ -26,15 +33,15 @@ async function call(key: string, id?: string, body?: object) {
     cache: "no-store", signal: AbortSignal.timeout(45000),
   });
   if (!response.ok) {
-    throw new Error(response.status === 402 ? "Se agotó el cupo de descargas del proveedor."
-      : response.status === 429 ? "El proveedor está ocupado. Intentá más tarde."
-      : `El proveedor rechazó la solicitud (HTTP ${response.status}).`);
+    throw new ProviderError(response.status, response.status === 402 ? "The provider's download quota has been exhausted."
+      : response.status === 429 ? "The provider is busy. Please try again later."
+      : `The provider rejected the request (HTTP ${response.status}).`);
   }
   return response.json();
 }
 export async function POST(req: NextRequest) {
-  const key = process.env.VIDFETCH_API_KEY;
-  if (!key) return NextResponse.json({ unavailable: true }, { status: 503 });
+  const keys = providerKeys();
+  if (!keys.length) return NextResponse.json({ unavailable: true }, { status: 503 });
   if (req.headers.get("origin") !== req.nextUrl.origin) {
     return NextResponse.json({ error: "Invalid request origin" }, { status: 403 });
   }
@@ -43,36 +50,49 @@ export async function POST(req: NextRequest) {
     const url = new URL(raw);
     if (!formats.has(format) || !["https:", "http:"].includes(url.protocol)
       || !["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"].includes(url.hostname)) {
-      return NextResponse.json({ error: "Enlace o formato no válido." }, { status: 400 });
+      return NextResponse.json({ error: "Invalid link or format." }, { status: 400 });
     }
     const id = url.hostname === "youtu.be" ? url.pathname.slice(1)
       : url.pathname === "/watch" ? url.searchParams.get("v") : url.pathname.match(/^\/(?:shorts|live|embed)\/([^/]+)$/)?.[1];
-    if (!id || !/^[\w-]{11}$/.test(id)) return NextResponse.json({ error: "Video no válido." }, { status: 400 });
-    const job = await call(key, undefined, { url: `https://www.youtube.com/watch?v=${id}`, format });
-    if (!job.id) throw new Error("El proveedor no devolvió un trabajo válido.");
+    if (!id || !/^[\w-]{11}$/.test(id)) return NextResponse.json({ error: "Invalid video." }, { status: 400 });
+    let key = keys[0];
+    let job;
+    for (let index = 0; index < keys.length; index++) {
+      key = keys[index];
+      try {
+        job = await call(key, undefined, { url: `https://www.youtube.com/watch?v=${id}`, format });
+        break;
+      } catch (error) {
+        // Retry only a definite quota rejection, never an ambiguous timeout or 5xx.
+        if (!(error instanceof ProviderError) || error.status !== 402 || index === keys.length - 1) throw error;
+      }
+    }
+    if (!job.id) throw new Error("The provider did not return a valid job.");
     const expiry = Date.now() + 60 * 60 * 1000;
     return NextResponse.json({ ...safeJob(job), ticket: `${job.id}.${expiry}.${sign(job.id, expiry, key)}` }, { status: 202 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "No se pudo crear la descarga." }, { status: 502 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not create the download." }, { status: 502 });
   }
 }
 export async function GET(req: NextRequest) {
-  const key = process.env.VIDFETCH_API_KEY;
-  if (!key) return NextResponse.json({ error: "Proveedor no configurado." }, { status: 503 });
+  const keys = providerKeys();
+  if (!keys.length) return NextResponse.json({ error: "Provider not configured." }, { status: 503 });
   const [id, expires, signature, extra] = (req.nextUrl.searchParams.get("ticket") || "").split(".");
   const expiry = Number(expires);
   if (!id || extra || !Number.isFinite(expiry) || expiry < Date.now() || !/^[a-f0-9]{64}$/.test(signature || "")) {
-    return NextResponse.json({ error: "Trabajo inválido o vencido." }, { status: 403 });
+    return NextResponse.json({ error: "Invalid or expired job." }, { status: 403 });
   }
-  if (!timingSafeEqual(Buffer.from(signature), Buffer.from(sign(id, expiry, key)))) {
-    return NextResponse.json({ error: "Trabajo inválido." }, { status: 403 });
+  // The signature binds each existing job to the account that created it.
+  const key = keys.find(candidate => timingSafeEqual(Buffer.from(signature), Buffer.from(sign(id, expiry, candidate))));
+  if (!key) {
+    return NextResponse.json({ error: "Invalid job." }, { status: 403 });
   }
   try {
     const job = await call(key, id);
     const result = safeJob(job);
     if (req.nextUrl.searchParams.get("download") === "1") {
       if (result.status !== "completed" || !result.downloadUrl) {
-        return NextResponse.json({ error: "El archivo todavía no está disponible." }, { status: 409 });
+        return NextResponse.json({ error: "The file is not available yet." }, { status: 409 });
       }
       const headers = new Headers({ "Accept-Encoding": "identity" });
       const range = req.headers.get("range");
@@ -86,7 +106,7 @@ export async function GET(req: NextRequest) {
         if (upstream.status === 416 && upstream.headers.has("content-range")) {
           errorHeaders.set("Content-Range", upstream.headers.get("content-range")!);
         }
-        return NextResponse.json({ error: "No se pudo transferir el archivo." }, {
+        return NextResponse.json({ error: "Could not transfer the file." }, {
           status: upstream.status === 416 ? 416 : 502, headers: errorHeaders,
         });
       }
@@ -106,6 +126,6 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "No se pudo consultar el trabajo." }, { status: 502 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not check the job." }, { status: 502 });
   }
 }
